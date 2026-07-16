@@ -107,62 +107,12 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
             </div>
           </div>
 
-          {/* 中间：二维码 */}
+          {/* 中间：快捷入口 */}
           <div className="text-white text-center">
             <h3 className="font-bold text-base mb-4 flex items-center gap-2 justify-center">
               <span className="w-1 h-5 bg-[#7ecfa0] rounded-full"/>
-              扫码联系 / 进店
+              快捷联系 / 进店
             </h3>
-            <div className="flex gap-4 justify-center">
-              {/* 微信二维码 */}
-              <div className="flex-1 max-w-[140px]">
-                <div className="bg-white rounded-xl p-3">
-                  <div className="w-full aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-2">
-                    <svg viewBox="0 0 100 100" className="w-full h-full p-2">
-                      <rect width="100" height="100" fill="white"/>
-                      <rect x="5" y="5" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="11" y="11" width="16" height="16" fill="#333"/>
-                      <rect x="67" y="5" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="73" y="11" width="16" height="16" fill="#333"/>
-                      <rect x="5" y="67" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="11" y="73" width="16" height="16" fill="#333"/>
-                      {[...Array(12)].map((_, i) => (
-                        <rect key={i} x={40 + (i % 4) * 14} y={5 + Math.floor(i / 4) * 14} width="11" height="11"
-                          fill={[1,0,1,1,0,1,0,1,1,0,1,0][i] ? '#333' : 'transparent'}/>
-                      ))}
-                      {[...Array(9)].map((_, i) => (
-                        <rect key={i} x={40 + (i % 3) * 14} y={67 + Math.floor(i / 3) * 14} width="11" height="11"
-                          fill={[1,0,1,0,1,1,1,0,1][i] ? '#333' : 'transparent'}/>
-                      ))}
-                    </svg>
-                  </div>
-                  <div className="text-xs text-gray-600 font-semibold text-center">微信客服</div>
-                  <div className="text-[10px] text-gray-400 text-center">定制报价·工程合作</div>
-                </div>
-              </div>
-              {/* 抖音二维码 */}
-              <div className="flex-1 max-w-[140px]">
-                <div className="bg-white rounded-xl p-3">
-                  <div className="w-full aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-2">
-                    <svg viewBox="0 0 100 100" className="w-full h-full p-2">
-                      <rect width="100" height="100" fill="white"/>
-                      <rect x="5" y="5" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="11" y="11" width="16" height="16" fill="#333"/>
-                      <rect x="67" y="5" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="73" y="11" width="16" height="16" fill="#333"/>
-                      <rect x="5" y="67" width="28" height="28" fill="none" stroke="#333" strokeWidth="3"/>
-                      <rect x="11" y="73" width="16" height="16" fill="#333"/>
-                      {[...Array(12)].map((_, i) => (
-                        <rect key={i} x={40 + (i % 4) * 14} y={5 + Math.floor(i / 4) * 14} width="11" height="11"
-                          fill={[0,1,0,1,1,0,1,0,0,1,0,1][i] ? '#333' : 'transparent'}/>
-                      ))}
-                    </svg>
-                  </div>
-                  <div className="text-xs text-gray-600 font-semibold text-center">抖音视频号</div>
-                  <div className="text-[10px] text-gray-400 text-center">工厂实拍·产品测试</div>
-                </div>
-              </div>
-            </div>
 
             {/* 拼多多入口 */}
             <a
@@ -170,16 +120,20 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
               target="_blank"
               rel="noopener noreferrer"
               data-pdd-btn="footer"
-              className="mt-4 block bg-[#e4323c] text-white py-3 px-6 rounded-xl font-bold hover:bg-[#c8282f] transition-colors"
+              className="block bg-[#e4323c] text-white py-3 px-6 rounded-xl font-bold hover:bg-[#c8282f] transition-colors"
             >
-              拼多多工厂店 · 立即进店
+              🛒 拼多多工厂店 · 立即进店
             </a>
             <button
               onClick={onSampleClick}
-              className="mt-2 block w-full bg-[#7ecfa0] text-[#0a3d1f] py-3 px-6 rounded-xl font-bold hover:bg-green-300 transition-colors"
+              className="mt-3 block w-full bg-[#7ecfa0] text-[#0a3d1f] py-3 px-6 rounded-xl font-bold hover:bg-green-300 transition-colors"
             >
-              申请免费寄样
+               申请免费寄样
             </button>
+            <div className="mt-4 text-xs text-green-300 space-y-1">
+              <div>微信客服：13507402179（罗生）</div>
+              <div>座机：0731-86869145</div>
+            </div>
           </div>
 
           {/* 右侧：在线留言 */}
@@ -259,15 +213,17 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-green-400">
           <div className="flex items-center gap-4">
             <span>{settings.copyright || '© 2024-2026 长沙盛安密封科技有限公司 版权所有'}</span>
-            <span className="hidden md:inline">|</span>
-            <span className="text-green-500">备案号：{settings.icp || '浙ICP备XXXXXXXX号'}</span>
+            {settings.icp && settings.icp !== '浙ICP备XXXXXXXX号' && (
+              <>
+                <span className="hidden md:inline">|</span>
+                <span className="text-green-500">备案号：{settings.icp}</span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-4">
-            <a href="#" className="hover:text-white transition-colors">隐私政策</a>
-            <span>|</span>
-            <a href="#" className="hover:text-white transition-colors">使用条款</a>
-            <span>|</span>
-            <a href="#" className="hover:text-white transition-colors">网站地图</a>
+            <span className="text-green-600">隐私政策</span>
+            <span className="text-green-800">|</span>
+            <span className="text-green-600">使用条款</span>
           </div>
         </div>
       </div>

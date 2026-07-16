@@ -10,6 +10,7 @@ import QRModal from '../sections/QRModal'
 interface Product {
   id: number
   name: string
+  short_name: string
   category: string
   badge: string
   badge_color: string
@@ -98,9 +99,12 @@ export default function ProductList() {
 
                 {/* 产品信息 */}
                 <div className="p-4">
-                  <h3 className="font-bold text-[#333] mb-2 line-clamp-2 group-hover:text-[#0F6637] transition-colors">
-                    {prod.name}
+                  <h3 className="font-bold text-[#333] mb-1 line-clamp-1 group-hover:text-[#0F6637] transition-colors">
+                    {prod.short_name || prod.name}
                   </h3>
+                  {prod.short_name && prod.short_name !== prod.name && (
+                    <p className="text-xs text-gray-400 mb-2 line-clamp-1">{prod.name}</p>
+                  )}
 
                   {/* 亮点标签 */}
                   <div className="flex flex-wrap gap-1 mb-3">

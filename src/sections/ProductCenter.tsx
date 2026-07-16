@@ -9,6 +9,7 @@ interface ProductCenterProps {
 interface Product {
   id: number
   name: string
+  short_name: string
   category: string
   badge: string
   badge_color: string
@@ -112,7 +113,10 @@ export default function ProductCenter({ onSampleClick }: ProductCenterProps) {
 
               {/* 产品信息 */}
               <div className="p-5">
-                <h3 className="text-xl font-bold text-[#333] mb-2">{prod.name}</h3>
+                <h3 className="text-xl font-bold text-[#333] mb-1">{prod.short_name || prod.name}</h3>
+                {prod.short_name && prod.short_name !== prod.name && (
+                  <p className="text-xs text-gray-400 mb-2 truncate">{prod.name}</p>
+                )}
 
                 {/* 亮点标签 */}
                 <div className="flex flex-wrap gap-1.5 mb-3">

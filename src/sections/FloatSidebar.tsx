@@ -19,7 +19,7 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
 
   return (
     <>
-      {/* PC端右侧悬浮侧边栏 */}
+      {/* PC端右侧悬浮侧边栏 - 精简为3个核心按钮 */}
       <div className="hidden md:flex fixed right-0 top-1/2 -translate-y-1/2 z-50 flex-col gap-1">
         {/* 微信二维码 */}
         <button
@@ -36,19 +36,6 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
           <span className="text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">微信客服咨询</span>
         </button>
 
-        {/* 抖音视频号 */}
-        <button
-          onClick={onDouyinClick}
-          className="group w-12 bg-[#333] hover:w-40 text-white flex items-center gap-2 px-2 py-3 rounded-l-xl transition-all duration-300 shadow-lg overflow-hidden"
-          title="抖音视频号"
-        >
-          <svg className="w-8 h-8 flex-shrink-0" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="15" fill="#333"/>
-            <path d="M20 10c.5 1.5 2 2.5 3.5 2.5v2.5c-1 0-2-.3-2.8-.8V20c0 2.8-2.2 5-5 5s-5-2.2-5-5 2.2-5 5-5c.2 0 .4 0 .5.1v2.6c-.2 0-.3-.1-.5-.1-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5V10H20z" fill="white"/>
-          </svg>
-          <span className="text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">抖音视频号</span>
-        </button>
-
         {/* 拼多多入口 */}
         <a
           href="https://mobile.yangkeduo.com"
@@ -61,21 +48,6 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
           <span className="text-xl flex-shrink-0">🛒</span>
           <span className="text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">拼多多工厂店 立即进店</span>
         </a>
-
-        {/* 在线咨询 */}
-        <button
-          className="group w-12 bg-[#1a7a42] hover:w-40 text-white flex items-center gap-2 px-2 py-3 rounded-l-xl transition-all duration-300 shadow-lg overflow-hidden"
-          title="在线咨询"
-        >
-          <svg className="w-8 h-8 flex-shrink-0" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="15" fill="#1a7a42"/>
-            <path d="M8 11a2 2 0 012-2h12a2 2 0 012 2v6a2 2 0 01-2 2h-2l-3 3-3-3H10a2 2 0 01-2-2V11z" fill="white"/>
-            <circle cx="12" cy="14" r="1" fill="#1a7a42"/>
-            <circle cx="16" cy="14" r="1" fill="#1a7a42"/>
-            <circle cx="20" cy="14" r="1" fill="#1a7a42"/>
-          </svg>
-          <span className="text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">在线咨询客服</span>
-        </button>
 
         {/* 免费寄样 */}
         <button

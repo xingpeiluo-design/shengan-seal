@@ -280,6 +280,7 @@ function ProductsView() {
 function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (data: any) => void; onCancel: () => void }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
+    short_name: initial?.short_name || '',
     category: initial?.category || '',
     badge: initial?.badge || '',
     badge_color: initial?.badge_color || '#0F6637',
@@ -288,7 +289,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
     use_cases: Array.isArray(initial?.use_cases) ? initial.use_cases.join('\n') : (initial?.use_cases || ''),
     specs: JSON.stringify(initial?.specs || [], null, 2),
     bg_color: initial?.bg_color || '#f0f9f4',
-    border_color: initial?.border_color || '#7ecfa0',
+    border_color: initial?.border_color || '#0F6637',
     price: initial?.price || '',
     stock: initial?.stock || '充足',
     pdd_link: initial?.pdd_link || 'https://mobile.yangkeduo.com',
@@ -360,8 +361,14 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
           <h3 className="text-sm font-bold text-gray-700 mb-3">📝 基础信息</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">产品名称 *</label>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">产品名称（拼多多标题） *</label>
               <input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">官网短名（卡片标题）</label>
+              <input value={form.short_name} onChange={e => setForm(p => ({ ...p, short_name: e.target.value }))}
+                placeholder="如：自粘式密封条·家装通用款"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
             </div>
             <div>

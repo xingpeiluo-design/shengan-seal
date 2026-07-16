@@ -10,6 +10,7 @@ import QRModal from './QRModal'
 interface Product {
   id: number
   name: string
+  short_name: string
   category: string
   badge: string
   badge_color: string
@@ -77,7 +78,7 @@ export default function ProductDetail() {
           <span>/</span>
           <Link to="/products" className="hover:text-[#0F6637]">产品中心</Link>
           <span>/</span>
-          <span className="text-gray-800 truncate">{product.name}</span>
+          <span className="text-gray-800 truncate">{product.short_name || product.name}</span>
         </div>
       </div>
 
@@ -133,7 +134,10 @@ export default function ProductDetail() {
             </div>
 
             {/* 产品名称 */}
-            <h1 className="text-2xl md:text-3xl font-bold text-[#333] mb-4 leading-tight">{product.name}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-[#333] mb-1 leading-tight">{product.short_name || product.name}</h1>
+            {product.short_name && product.short_name !== product.name && (
+              <p className="text-sm text-gray-400 mb-4">{product.name}</p>
+            )}
 
             {/* 价格 */}
             {product.price && (
