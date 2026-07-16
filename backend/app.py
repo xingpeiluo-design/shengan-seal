@@ -251,10 +251,14 @@ def seed_data():
     db.close()
 
 # ============ 认证 ============
-def generate_token():
+def generate_token(user='admin'):
     token = secrets.token_hex(24)
     db = get_db()
-    db.execute('INSERT INTO admin_tokens (token) VALUES (?)', (token,))
+    try:
+        db.execute('INSERT INTO admin_tokens (token, user) VALUES (?, ?)', (token, user))
+    except sqlite3.IntegrityError:
+        # 兼容旧表结构（无 user 字段）
+        db.execute('INSERT INTO admin_tokens (token) VALUES (?)', (token,))
     db.commit()
     return token
 
@@ -309,6 +313,8 @@ def get_products():
         item['highlights'] = json.loads(item['highlights'])
         item['specs'] = json.loads(item['specs'])
         item['use_cases'] = json.loads(item['use_cases'])
+        item['gallery_images'] = json.loads(item['gallery_images']) if item.get('gallery_images') else []
+        item['detail_images'] = json.loads(item['detail_images']) if item.get('detail_images') else []
         result.append(item)
     return jsonify(result)
 
@@ -317,7 +323,16 @@ def get_products():
 def admin_get_products():
     db = get_db()
     rows = db.execute('SELECT * FROM products ORDER BY sort_order, id').fetchall()
-    return jsonify([dict(r) for r in rows])
+    result = []
+    for r in rows:
+        item = dict(r)
+        for field in ('highlights', 'specs', 'use_cases', 'gallery_images', 'detail_images'):
+            try:
+                item[field] = json.loads(item[field]) if item.get(field) else []
+            except (json.JSONDecodeError, TypeError):
+                item[field] = []
+        result.append(item)
+    return jsonify(result)
 
 @app.route('/api/admin/products', methods=['POST'])
 @require_auth
@@ -356,8 +371,8 @@ def admin_update_product(pid):
     for f in fields:
         if f in data:
             updates.append(f'{f}=:{f}')
-            if f in ('highlights','specs','use_cases'):
-                values[f] = json.dumps(data[f], ensure_ascii=False)
+            if f in ('highlights','specs','use_cases','gallery_images','detail_images'):
+                values[f] = json.dumps(data[f], ensure_ascii=False) if isinstance(data[f], (list, dict)) else data[f]
             else:
                 values[f] = data[f]
     if not updates:
