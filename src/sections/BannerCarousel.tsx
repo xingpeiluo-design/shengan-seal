@@ -73,46 +73,21 @@ export default function BannerCarousel({ onSampleClick }: BannerCarouselProps) {
 
   return (
     <section id="home" className={`relative bg-gradient-to-br ${slide.bg} min-h-[520px] md:min-h-[600px] flex items-center overflow-hidden transition-all duration-700`}>
-      {/* 背景几何装饰 */}
-      <div className="absolute inset-0 opacity-10">
-        {slide.pattern === 'factory' && (
-          <svg className="w-full h-full" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <rect x="0" y="400" width="1200" height="200" fill="white"/>
-            <rect x="100" y="300" width="200" height="300" fill="white" opacity="0.5"/>
-            <rect x="350" y="250" width="300" height="350" fill="white" opacity="0.4"/>
-            <rect x="700" y="280" width="250" height="320" fill="white" opacity="0.3"/>
-            <rect x="1000" y="320" width="180" height="280" fill="white" opacity="0.5"/>
-            {[...Array(12)].map((_, i) => (
-              <rect key={i} x={80 + i * 95} y={270 + (i % 3) * 20} width={60} height={8} fill="white" opacity="0.6"/>
-            ))}
-          </svg>
-        )}
-        {slide.pattern === 'window' && (
-          <svg className="w-full h-full" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            {[...Array(5)].map((_, i) => (
-              <g key={i}>
-                <rect x={50 + i * 230} y="50" width="180" height="500" rx="8" stroke="white" strokeWidth="8" fill="none"/>
-                <line x1={140 + i * 230} y1="50" x2={140 + i * 230} y2="550" stroke="white" strokeWidth="6"/>
-                <line x1={50 + i * 230} y1="300" x2={230 + i * 230} y2="300" stroke="white" strokeWidth="6"/>
-              </g>
-            ))}
-          </svg>
-        )}
-        {slide.pattern === 'delivery' && (
-          <svg className="w-full h-full" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            {[...Array(8)].map((_, i) => (
-              <g key={i}>
-                <rect x={50 + i * 145} y={100 + (i % 2) * 50} width="120" height="80" rx="4" fill="white" opacity="0.4"/>
-                <line x1={50 + i * 145} y1={140 + (i % 2) * 50} x2={170 + i * 145} y2={140 + (i % 2) * 50} stroke="white" strokeWidth="2"/>
-              </g>
-            ))}
-            <rect x="0" y="450" width="1200" height="4" fill="white"/>
-            {[...Array(6)].map((_, i) => (
-              <circle key={i} cx={100 + i * 200} cy="450" r="20" fill="white" opacity="0.5"/>
-            ))}
-          </svg>
-        )}
+      {/* 背景装饰 - 精致点阵网格 */}
+      <div className="absolute inset-0 opacity-[0.07]">
+        <svg className="w-full h-full" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+              <circle cx="2" cy="2" r="1.5" fill="white"/>
+            </pattern>
+          </defs>
+          <rect width="1200" height="600" fill="url(#dots)"/>
+        </svg>
       </div>
+
+      {/* 背景光晕 */}
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-white/[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"/>
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-white/[0.02] rounded-full blur-2xl translate-y-1/3 -translate-x-1/4"/>
 
       {/* 主内容 */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 w-full">
@@ -143,7 +118,7 @@ export default function BannerCarousel({ onSampleClick }: BannerCarouselProps) {
           <div className="flex flex-wrap gap-3">
             <a
               href={slide.href1}
-              className="btn-outline border-white text-white hover:bg-white hover:text-[#0F6637] px-8 py-3 rounded font-bold text-base"
+              className="inline-flex items-center gap-1.5 border-2 border-white/80 text-white hover:bg-white hover:text-[#0F6637] px-8 py-3 rounded-lg font-bold text-base transition-all duration-200"
             >
               {slide.cta1}
             </a>

@@ -130,7 +130,7 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
             <span className="text-[10px] font-bold mt-0.5">免费寄样</span>
           </button>
           <a
-            href="tel:4008888SEAL"
+            href="tel:13507402179"
             className="flex-1 bg-[#1a7a42] text-white flex flex-col items-center justify-center py-2.5"
           >
             <span className="text-base">📞</span>

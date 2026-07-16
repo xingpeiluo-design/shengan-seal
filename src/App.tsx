@@ -45,14 +45,14 @@ function HomePage() {
       />
       {showSampleModal && <SampleModal onClose={() => setShowSampleModal(false)} />}
       {showQRModal && <QRModal type={showQRModal} onClose={() => setShowQRModal(null)} />}
-      {/* 隐藏的管理入口 */}
+      {/* 管理入口：仅双击左下角触发，平时完全不可见 */}
       <a
         href="#/admin"
-        className="fixed bottom-4 left-4 text-xs text-gray-300 hover:text-gray-500 transition-colors"
+        className="fixed bottom-0 left-0 w-3 h-3 opacity-0 cursor-default"
         style={{ zIndex: 999 }}
-      >
-        管理后台
-      </a>
+        onDoubleClick={() => { window.location.hash = '#/admin' }}
+        title=""
+      />
     </div>
   )
 }
