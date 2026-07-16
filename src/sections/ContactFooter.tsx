@@ -80,8 +80,8 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
               <div className="flex gap-2">
                 <span className="text-[#7ecfa0] flex-shrink-0">📞</span>
                 <div>
-                  <div className="font-semibold text-white">{settings.hotline || '400-888-SEAL'}（采购热线）</div>
-                  <div className="text-xs mt-0.5">{settings.factory_phone || '138-0000-1234'}（工厂直线）</div>
+                  <div className="font-semibold text-white">{settings.hotline || '13507402179'}（电话/微信·罗生）</div>
+                  <div className="text-xs mt-0.5">{settings.factory_phone || '0731-86869145'}（座机）</div>
                 </div>
               </div>
               <div className="flex gap-2">

@@ -24,8 +24,8 @@ export default function Header({ onSampleClick }: HeaderProps) {
 
   const renderNavLink = (item: any, onClick?: () => void, isMobile = false) => {
     const baseClass = isMobile
-      ? 'block px-4 py-2 text-white text-sm hover:bg-[#1a7a42] rounded transition-colors'
-      : 'px-3 py-2 text-white text-sm hover:bg-[#1a7a42] rounded transition-colors'
+      ? 'block px-4 py-2 text-white text-sm hover:bg-[#1a7a42] rounded transition-colors whitespace-nowrap'
+      : 'px-2.5 py-2 text-white text-[13px] hover:bg-[#1a7a42] rounded transition-colors whitespace-nowrap font-medium'
     if (item.isRoute) {
       return (
         <Link
