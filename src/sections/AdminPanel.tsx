@@ -1,0 +1,903 @@
+import { useState, useEffect, useCallback } from 'react'
+import { api } from '../api'
+
+interface AdminPanelProps {
+  onBack: () => void
+}
+
+type AdminTab = 'dashboard' | 'products' | 'news' | 'messages' | 'samples' | 'settings'
+
+// ============ 登录页面 ============
+function LoginPage({ onLogin, onBack }: { onLogin: () => void; onBack: () => void }) {
+  const [loginForm, setLoginForm] = useState({ user: '', pass: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      await api.auth.login(loginForm.user, loginForm.pass)
+      onLogin()
+    } catch (err: any) {
+      setError(err.message || '登录失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0a3d1f] to-[#0F6637] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="bg-[#0F6637] px-6 py-5 text-center">
+          <div className="text-white text-xl font-bold">盛安密封 · 管理后台</div>
+          <div className="text-green-200 text-sm mt-1">Shengan Seal CMS</div>
+        </div>
+        <form onSubmit={handleLogin} className="p-6 space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">管理员账号</label>
+            <input
+              type="text"
+              placeholder="请输入账号"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0F6637]"
+              value={loginForm.user}
+              onChange={e => setLoginForm(p => ({ ...p, user: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">密码</label>
+            <input
+              type="password"
+              placeholder="请输入密码"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0F6637]"
+              value={loginForm.pass}
+              onChange={e => setLoginForm(p => ({ ...p, pass: e.target.value }))}
+            />
+          </div>
+          {error && <div className="text-red-500 text-xs bg-red-50 p-2 rounded">{error}</div>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#0F6637] text-white py-3 rounded-lg font-bold hover:bg-[#1a7a42] transition-colors disabled:opacity-50"
+          >
+            {loading ? '登录中...' : '登录管理后台'}
+          </button>
+          <div className="text-xs text-gray-400 text-center">默认账号：admin / shengan2026</div>
+        </form>
+        <button
+          onClick={onBack}
+          className="w-full text-center text-xs text-gray-400 py-3 hover:text-gray-600 border-t border-gray-100"
+        >
+          ← 返回官网前台
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============ 主面板 ============
+export default function AdminPanel({ onBack }: AdminPanelProps) {
+  const [loginOk, setLoginOk] = useState(false)
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard')
+  const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    api.auth.verify().then(valid => {
+      setLoginOk(valid)
+      setAuthChecked(true)
+    })
+  }, [])
+
+  if (!authChecked) {
+    return <div className="min-h-screen bg-gray-100 flex items-center justify-center text-gray-400">验证登录状态...</div>
+  }
+
+  if (!loginOk) {
+    return <LoginPage onLogin={() => setLoginOk(true)} onBack={onBack} />
+  }
+
+  const tabs: { key: AdminTab; label: string; icon: string }[] = [
+    { key: 'dashboard', label: '控制台', icon: '📊' },
+    { key: 'products', label: '产品管理', icon: '📦' },
+    { key: 'news', label: '资讯管理', icon: '📰' },
+    { key: 'messages', label: '留言管理', icon: '✉️' },
+    { key: 'samples', label: '寄样申请', icon: '📦' },
+    { key: 'settings', label: '渠道设置', icon: '⚙️' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex">
+      {/* 侧边菜单 */}
+      <div className="w-52 bg-[#0a3d1f] flex-shrink-0 flex flex-col">
+        <div className="px-4 py-5 border-b border-white/10">
+          <div className="text-white font-bold text-base">盛安密封</div>
+          <div className="text-green-400 text-xs mt-0.5">管理后台 v2.0</div>
+        </div>
+        <nav className="flex-1 py-3">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-[#0F6637] text-white font-semibold'
+                  : 'text-green-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <button
+          onClick={() => { api.auth.logout(); onBack() }}
+          className="px-4 py-3 text-green-400 hover:text-white text-xs border-t border-white/10 flex items-center gap-2"
+        >
+          ← 退出登录
+        </button>
+      </div>
+
+      {/* 主内容区 */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'dashboard' && <DashboardView />}
+        {activeTab === 'products' && <ProductsView />}
+        {activeTab === 'news' && <NewsView />}
+        {activeTab === 'messages' && <MessagesView />}
+        {activeTab === 'samples' && <SamplesView />}
+        {activeTab === 'settings' && <SettingsView />}
+      </div>
+    </div>
+  )
+}
+
+// ============ 控制台 ============
+function DashboardView() {
+  const [stats, setStats] = useState<any>(null)
+
+  useEffect(() => {
+    api.admin.getStats().then(setStats).catch(() => {})
+  }, [])
+
+  if (!stats) return <div className="text-gray-400">加载中...</div>
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-800 mb-6">控制台概览</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: '今日留言', value: stats.today_messages, sub: `待跟进 ${stats.pending_messages} 条`, color: '#e4323c' },
+          { label: '今日寄样申请', value: stats.today_samples, sub: `待处理 ${stats.pending_samples} 条`, color: '#f59e0b' },
+          { label: '总留言量', value: stats.total_messages, sub: '历史累计', color: '#0F6637' },
+          { label: '总寄样申请', value: stats.total_samples, sub: '历史累计', color: '#1a7a42' },
+        ].map(item => (
+          <div key={item.label} className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="text-gray-500 text-sm">{item.label}</div>
+            <div className="text-3xl font-black mt-1" style={{ color: item.color }}>{item.value}</div>
+            <div className="text-xs text-gray-400 mt-1">{item.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div className="bg-white rounded-xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-700 mb-3 text-sm">系统说明</h3>
+        <ul className="text-xs text-gray-500 space-y-1.5">
+          <li>✅ 产品管理：新增/修改/删除产品，前台实时同步</li>
+          <li>✅ 资讯管理：发布/编辑行业资讯，前台实时同步</li>
+          <li>✅ 留言管理：查看客户真实留言，标记跟进状态</li>
+          <li>✅ 寄样申请：查看寄样申请，标记处理状态</li>
+          <li>✅ 渠道设置：修改拼多多链接、联系方式等，前台实时同步</li>
+          <li>✅ 数据持久化：所有数据存储在 SQLite 数据库，刷新不丢失</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+// ============ 产品管理 ============
+function ProductsView() {
+  const [products, setProducts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<any | null>(null)
+  const [showForm, setShowForm] = useState(false)
+
+  const load = useCallback(() => {
+    api.admin.getProducts().then(data => { setProducts(data); setLoading(false) }).catch(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定删除这个产品吗？')) return
+    await api.admin.deleteProduct(id)
+    load()
+  }
+
+  const handleSave = async (data: any) => {
+    if (editing?.id) {
+      await api.admin.updateProduct(editing.id, data)
+    } else {
+      await api.admin.createProduct(data)
+    }
+    setShowForm(false)
+    setEditing(null)
+    load()
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  if (showForm) {
+    return <ProductForm initial={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null) }} />
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">产品管理</h2>
+        <button
+          onClick={() => { setEditing(null); setShowForm(true) }}
+          className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
+        >
+          + 新增产品
+        </button>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              {['产品名称', '分类', '价格', '拼多多链接', '状态', '操作'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs text-gray-500 font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {products.map(prod => (
+              <tr key={prod.id} className="border-t border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-3 font-medium">{prod.name}</td>
+                <td className="px-4 py-3 text-gray-500">{prod.category}</td>
+                <td className="px-4 py-3 text-[#0F6637] font-semibold">{prod.price}</td>
+                <td className="px-4 py-3 text-xs text-blue-500 truncate max-w-[200px]">{prod.pdd_link}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${prod.status === '上架' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                    {prod.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    <button onClick={() => { setEditing(prod); setShowForm(true) }} className="text-xs text-blue-500 hover:underline">编辑</button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={() => handleDelete(prod.id)} className="text-xs text-red-500 hover:underline">删除</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (data: any) => void; onCancel: () => void }) {
+  const [form, setForm] = useState({
+    name: initial?.name || '',
+    category: initial?.category || '',
+    badge: initial?.badge || '',
+    badge_color: initial?.badge_color || '#0F6637',
+    description: initial?.description || '',
+    highlights: Array.isArray(initial?.highlights) ? initial.highlights.join('\n') : (initial?.highlights || ''),
+    use_cases: Array.isArray(initial?.use_cases) ? initial.use_cases.join('\n') : (initial?.use_cases || ''),
+    specs: JSON.stringify(initial?.specs || [], null, 2),
+    bg_color: initial?.bg_color || '#f0f9f4',
+    border_color: initial?.border_color || '#7ecfa0',
+    price: initial?.price || '',
+    stock: initial?.stock || '充足',
+    pdd_link: initial?.pdd_link || 'https://mobile.yangkeduo.com',
+    status: initial?.status || '上架',
+    sort_order: initial?.sort_order || 0,
+    image_url: initial?.image_url || '',
+    gallery_images: (initial?.gallery_images || []) as string[],
+    detail_images: (initial?.detail_images || []) as string[],
+  })
+  const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+
+  // 上传图片（单张/多张）
+  const handleUpload = async (files: FileList, target: 'image_url' | 'gallery_images' | 'detail_images') => {
+    if (!files.length) return
+    setUploading(true)
+    try {
+      const fileArr = Array.from(files)
+      if (target === 'image_url') {
+        const res = await api.admin.uploadImage(fileArr[0])
+        setForm(p => ({ ...p, image_url: res.url }))
+      } else {
+        const res = await api.admin.uploadImages(fileArr)
+        const newUrls: string[] = res.urls || [res.url]
+        setForm(p => ({
+          ...p,
+          [target]: [...(p[target] as string[]), ...newUrls],
+        }))
+      }
+    } catch (err: any) {
+      alert('上传失败: ' + err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeImage = (target: 'gallery_images' | 'detail_images', index: number) => {
+    setForm(p => ({
+      ...p,
+      [target]: (p[target] as string[]).filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const data = {
+        ...form,
+        highlights: form.highlights.split('\n').filter(Boolean),
+        use_cases: form.use_cases.split('\n').filter(Boolean),
+        specs: JSON.parse(form.specs),
+        sort_order: Number(form.sort_order),
+      }
+      onSave(data)
+    } catch {
+      setError('规格参数 JSON 格式错误，请检查')
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">{initial?.id ? '编辑产品' : '新增产品'}</h2>
+        <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">← 返回列表</button>
+      </div>
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm space-y-5 max-w-3xl">
+        {/* 基础信息 */}
+        <div className="border-b border-gray-100 pb-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">📝 基础信息</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">产品名称 *</label>
+              <input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">分类 *</label>
+              <input required value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                placeholder="如：拼多多C端·家装散户"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">标签文字</label>
+              <input value={form.badge} onChange={e => setForm(p => ({ ...p, badge: e.target.value }))}
+                placeholder="如：拼多多热销款"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">价格</label>
+              <input value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))}
+                placeholder="如：¥2.8/米起"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+          </div>
+        </div>
+
+        {/* 图片管理 */}
+        <div className="border-b border-gray-100 pb-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">🖼️ 产品图片</h3>
+
+          {/* 主图 */}
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">产品主图（列表封面）</label>
+            <div className="flex items-start gap-3">
+              {form.image_url && (
+                <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
+                  <img src={form.image_url} alt="主图" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className="cursor-pointer bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-500 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
+                {uploading ? '上传中...' : '点击上传主图'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => handleUpload(e.target.files!, 'image_url')} disabled={uploading} />
+              </label>
+            </div>
+            <input value={form.image_url} onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
+              placeholder="或手动输入图片路径" className="w-full mt-2 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#0F6637]" />
+          </div>
+
+          {/* 轮播图 */}
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">轮播主图（详情页画廊，可多选）</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {form.gallery_images.map((img, i) => (
+                <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 group">
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => removeImage('gallery_images', i)}
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity">
+                    删除
+                  </button>
+                </div>
+              ))}
+              <label className="cursor-pointer w-20 h-20 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
+                {uploading ? '...' : '+添加'}
+                <input type="file" accept="image/*" multiple className="hidden"
+                  onChange={e => handleUpload(e.target.files!, 'gallery_images')} disabled={uploading} />
+              </label>
+            </div>
+            <div className="text-xs text-gray-400">共 {form.gallery_images.length} 张轮播图</div>
+          </div>
+
+          {/* 详情图 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">详情长图（产品详情区展示，可多选）</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {form.detail_images.map((img, i) => (
+                <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 group">
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => removeImage('detail_images', i)}
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity">
+                    删除
+                  </button>
+                </div>
+              ))}
+              <label className="cursor-pointer w-20 h-20 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
+                {uploading ? '...' : '+添加'}
+                <input type="file" accept="image/*" multiple className="hidden"
+                  onChange={e => handleUpload(e.target.files!, 'detail_images')} disabled={uploading} />
+              </label>
+            </div>
+            <div className="text-xs text-gray-400">共 {form.detail_images.length} 张详情图</div>
+          </div>
+        </div>
+
+        {/* 产品描述 */}
+        <div className="border-b border-gray-100 pb-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">📋 产品描述</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">产品描述</label>
+              <textarea rows={3} value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">亮点标签（每行一个）</label>
+              <textarea rows={3} value={form.highlights} onChange={e => setForm(p => ({ ...p, highlights: e.target.value }))}
+                placeholder="自带德国进口双面胶&#10;免开槽·免打孔"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">使用场景（每行一个）</label>
+              <textarea rows={3} value={form.use_cases} onChange={e => setForm(p => ({ ...p, use_cases: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">规格参数（JSON 格式）</label>
+              <textarea rows={5} value={form.specs} onChange={e => setForm(p => ({ ...p, specs: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#0F6637]" />
+            </div>
+          </div>
+        </div>
+
+        {/* 其他设置 */}
+        <div>
+          <h3 className="text-sm font-bold text-gray-700 mb-3">⚙️ 其他设置</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">拼多多链接</label>
+              <input value={form.pdd_link} onChange={e => setForm(p => ({ ...p, pdd_link: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">状态</label>
+              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]">
+                <option>上架</option>
+                <option>下架</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {error && <div className="text-red-500 text-xs bg-red-50 p-2 rounded">{error}</div>}
+        <div className="flex gap-3">
+          <button type="submit" disabled={uploading} className="bg-[#0F6637] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] disabled:opacity-50">
+            {uploading ? '图片上传中...' : '保存'}
+          </button>
+          <button type="button" onClick={onCancel} className="border border-gray-200 px-6 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// ============ 资讯管理 ============
+function NewsView() {
+  const [news, setNews] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<any | null>(null)
+  const [showForm, setShowForm] = useState(false)
+
+  const load = useCallback(() => {
+    api.admin.getNews().then(data => { setNews(data); setLoading(false) }).catch(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定删除这条资讯吗？')) return
+    await api.admin.deleteNews(id)
+    load()
+  }
+
+  const handleSave = async (data: any) => {
+    if (editing?.id) {
+      await api.admin.updateNews(editing.id, data)
+    } else {
+      await api.admin.createNews(data)
+    }
+    setShowForm(false)
+    setEditing(null)
+    load()
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  if (showForm) {
+    return <NewsForm initial={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null) }} />
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">资讯管理</h2>
+        <button
+          onClick={() => { setEditing(null); setShowForm(true) }}
+          className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
+        >
+          + 发布新资讯
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        {news.map(item => (
+          <div key={item.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="bg-[#e8f5ec] text-[#0F6637] text-xs px-2 py-0.5 rounded-full">{item.category}</span>
+              <div>
+                <div className="text-sm font-medium">{item.title}</div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {item.created_at?.split(' ')[0]} · 浏览 {item.views} · {item.published ? '已发布' : '草稿'}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setEditing(item); setShowForm(true) }} className="text-xs text-blue-500 border border-blue-200 px-3 py-1 rounded hover:bg-blue-50">编辑</button>
+              <button onClick={() => handleDelete(item.id)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded hover:bg-red-50">删除</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function NewsForm({ initial, onSave, onCancel }: { initial: any; onSave: (data: any) => void; onCancel: () => void }) {
+  const [form, setForm] = useState({
+    title: initial?.title || '',
+    category: initial?.category || '行业科普',
+    summary: initial?.summary || '',
+    content: initial?.content || '',
+    tags: (initial?.tags || []).join(', '),
+    read_time: initial?.read_time || '3分钟',
+    published: initial?.published ?? 1,
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSave({
+      ...form,
+      tags: form.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+      published: Number(form.published),
+    })
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">{initial?.id ? '编辑资讯' : '发布新资讯'}</h2>
+        <button onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700">← 返回列表</button>
+      </div>
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm space-y-4 max-w-2xl">
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1 block">标题 *</label>
+          <input required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">分类</label>
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]">
+              <option>安装教程</option>
+              <option>行业科普</option>
+              <option>工厂资讯</option>
+              <option>建材标准</option>
+              <option>改造知识</option>
+              <option>SEO专题</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">阅读时长</label>
+            <input value={form.read_time} onChange={e => setForm(p => ({ ...p, read_time: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">状态</label>
+            <select value={form.published} onChange={e => setForm(p => ({ ...p, published: Number(e.target.value) }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]">
+              <option value={1}>发布</option>
+              <option value={0}>草稿</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1 block">摘要</label>
+          <textarea rows={2} value={form.summary} onChange={e => setForm(p => ({ ...p, summary: e.target.value }))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1 block">正文内容</label>
+          <textarea rows={6} value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1 block">标签（逗号分隔）</label>
+          <input value={form.tags} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))}
+            placeholder="安装教程, 自贴式, 旧房改造"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+        </div>
+        <div className="flex gap-3">
+          <button type="submit" className="bg-[#0F6637] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#1a7a42]">保存</button>
+          <button type="button" onClick={onCancel} className="border border-gray-200 px-6 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// ============ 留言管理 ============
+function MessagesView() {
+  const [messages, setMessages] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<string>('')
+
+  const load = useCallback(() => {
+    api.admin.getMessages(filter || undefined).then(data => { setMessages(data); setLoading(false) }).catch(() => setLoading(false))
+  }, [filter])
+
+  useEffect(() => { load() }, [load])
+
+  const toggleStatus = async (id: number, current: string) => {
+    const newStatus = current === '待跟进' ? '已跟进' : '待跟进'
+    await api.admin.updateMessage(id, { status: newStatus })
+    load()
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定删除这条留言吗？')) return
+    await api.admin.deleteMessage(id)
+    load()
+  }
+
+  const handleExport = async () => {
+    const blob = await api.admin.exportMessages()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'messages.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">客户留言管理</h2>
+        <div className="flex gap-3">
+          <select value={filter} onChange={e => setFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]">
+            <option value="">全部</option>
+            <option value="待跟进">待跟进</option>
+            <option value="已跟进">已跟进</option>
+          </select>
+          <button onClick={handleExport} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-700">
+            导出 CSV
+          </button>
+        </div>
+      </div>
+      {messages.length === 0 ? (
+        <div className="bg-white rounded-xl p-12 text-center text-gray-400">暂无留言</div>
+      ) : (
+        <div className="space-y-3">
+          {messages.map(m => (
+            <div key={m.id} className="bg-white rounded-xl p-5 shadow-sm border-l-4" style={{ borderLeftColor: m.status === '待跟进' ? '#e4323c' : '#0F6637' }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <span className="font-bold text-gray-800">{m.name}</span>
+                    <span className="text-sm text-gray-500">{m.company}</span>
+                    <span className="text-sm text-[#0F6637] font-semibold">{m.phone}</span>
+                    <span className="text-xs text-gray-400">{m.created_at}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-1">
+                    <strong>需求：</strong>{m.need}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    意向产品：{m.product || '未指定'} · 来源：{m.source === 'contact' ? '联系表单' : m.source}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <span className={`text-xs px-2 py-1 rounded-full font-semibold text-center ${m.status === '待跟进' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                    {m.status}
+                  </span>
+                  <button onClick={() => toggleStatus(m.id, m.status)}
+                    className="text-xs text-white bg-[#0F6637] px-2 py-1 rounded-lg hover:bg-[#1a7a42] transition-colors">
+                    切换状态
+                  </button>
+                  <button onClick={() => handleDelete(m.id)}
+                    className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============ 寄样申请管理 ============
+function SamplesView() {
+  const [samples, setSamples] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(() => {
+    api.admin.getSamples().then(data => { setSamples(data); setLoading(false) }).catch(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const updateStatus = async (id: number, status: string) => {
+    await api.admin.updateSample(id, { status })
+    load()
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定删除这条寄样申请吗？')) return
+    await api.admin.deleteSample(id)
+    load()
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">寄样申请管理</h2>
+      </div>
+      {samples.length === 0 ? (
+        <div className="bg-white rounded-xl p-12 text-center text-gray-400">暂无寄样申请</div>
+      ) : (
+        <div className="space-y-3">
+          {samples.map(s => (
+            <div key={s.id} className="bg-white rounded-xl p-5 shadow-sm border-l-4" style={{ borderLeftColor: s.status === '待处理' ? '#f59e0b' : '#0F6637' }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <span className="font-bold text-gray-800">{s.name}</span>
+                    <span className="text-sm text-[#0F6637] font-semibold">{s.phone}</span>
+                    {s.company && <span className="text-sm text-gray-500">{s.company}</span>}
+                    <span className="text-xs text-gray-400">{s.created_at}</span>
+                  </div>
+                  {s.address && <div className="text-sm text-gray-600 mb-1"><strong>收货地址：</strong>{s.address}</div>}
+                  {s.product && <div className="text-xs text-gray-400 mb-1">意向产品：{s.product}</div>}
+                  {s.note && <div className="text-xs text-gray-400">备注：{s.note}</div>}
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <select value={s.status} onChange={e => updateStatus(s.id, e.target.value)}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0F6637]">
+                    <option value="待处理">待处理</option>
+                    <option value="已发货">已发货</option>
+                    <option value="已处理">已处理</option>
+                  </select>
+                  <button onClick={() => handleDelete(s.id)}
+                    className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============ 渠道设置 ============
+function SettingsView() {
+  const [settings, setSettings] = useState<any[]>([])
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    api.admin.getSettings().then(data => {
+      setSettings(data)
+      const map: Record<string, string> = {}
+      data.forEach((s: any) => { map[s.key] = s.value })
+      setValues(map)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await api.admin.updateSettings(values)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err: any) {
+      alert('保存失败: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  // 按分类分组
+  const categories = [...new Set(settings.map(s => s.category))]
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">渠道链接 & 企业信息</h2>
+        <button onClick={handleSave} disabled={saving}
+          className="bg-[#0F6637] text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] disabled:opacity-50">
+          {saving ? '保存中...' : saved ? '✅ 已保存' : '保存全部'}
+        </button>
+      </div>
+      <div className="space-y-6">
+        {categories.map(cat => (
+          <div key={cat} className="bg-white rounded-xl p-5 shadow-sm space-y-4">
+            <h3 className="font-semibold text-gray-700 text-sm">
+              {cat === 'channel' ? '渠道链接' : cat === 'contact' ? '联系方式' : cat === 'seo' ? 'SEO 设置' : '基础信息'}
+            </h3>
+            {settings.filter(s => s.category === cat).map(item => (
+              <div key={item.key}>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">{item.label}</label>
+                <input
+                  value={values[item.key] || ''}
+                  onChange={e => setValues(prev => ({ ...prev, [item.key]: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]"
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+.env
+.DS_Store
+*.db
+pdd_images/
+backend/shengan.db
