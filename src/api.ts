@@ -210,6 +210,17 @@ export const api = {
       })
       return res.blob()
     },
+    async importMessages(file: File) {
+      const token = getToken()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${API_BASE}/admin/messages/import`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      })
+      return res.json()
+    },
 
     // 寄样
     async getSamples() {
@@ -220,6 +231,24 @@ export const api = {
     },
     async deleteSample(id: number) {
       return request(`/admin/samples/${id}`, { method: 'DELETE' })
+    },
+    async exportSampleRequests() {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/admin/sample-requests/export`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      return res.blob()
+    },
+    async importSampleRequests(file: File) {
+      const token = getToken()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${API_BASE}/admin/sample-requests/import`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      })
+      return res.json()
     },
 
     // 设置

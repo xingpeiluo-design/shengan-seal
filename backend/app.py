@@ -158,6 +158,11 @@ def _migrate_columns():
         ('products', 'short_name', "ALTER TABLE products ADD COLUMN short_name TEXT DEFAULT ''"),
         ('products', 'is_test', 'ALTER TABLE products ADD COLUMN is_test INTEGER DEFAULT 0'),
         ('news', 'is_test', 'ALTER TABLE news ADD COLUMN is_test INTEGER DEFAULT 0'),
+        ('messages', 'is_test', 'ALTER TABLE messages ADD COLUMN is_test INTEGER DEFAULT 0'),
+        ('messages', 'email', "ALTER TABLE messages ADD COLUMN email TEXT DEFAULT ''"),
+        ('messages', 'subject', "ALTER TABLE messages ADD COLUMN subject TEXT DEFAULT ''"),
+        ('samples', 'is_test', 'ALTER TABLE samples ADD COLUMN is_test INTEGER DEFAULT 0'),
+        ('samples', 'quantity', "ALTER TABLE samples ADD COLUMN quantity TEXT DEFAULT ''"),
     ]
     for table, col, sql in migrations:
         if not _column_exists(db, table, col):
@@ -1020,20 +1025,184 @@ def import_news():
 @app.route('/api/admin/messages/export', methods=['GET'])
 @require_auth
 def export_messages():
+    from flask import send_file
     db = get_db()
     rows = db.execute('SELECT * FROM messages ORDER BY id DESC').fetchall()
-    import csv, io
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['ID','姓名','公司','电话','需求','意向产品','状态','来源','时间'])
-    for r in rows:
-        writer.writerow([r['id'], r['name'], r['company'], r['phone'], r['need'], r['product'], r['status'], r['source'], r['created_at']])
-    from flask import Response
-    return Response(
-        '\ufeff' + output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': 'attachment; filename=messages.csv'}
-    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        csv_buf = io.StringIO()
+        csv_buf.write('\ufeff')
+        writer = csv.writer(csv_buf)
+        writer.writerow(['id', 'name', 'company', 'phone', 'email', 'subject', 'need', 'product', 'status', 'source', 'created_at', 'is_test'])
+        for r in rows:
+            rd = dict(r)
+            writer.writerow([
+                rd['id'], rd['name'], rd['company'], rd['phone'],
+                rd.get('email') or '', rd.get('subject') or '',
+                rd['need'], rd['product'], rd['status'], rd['source'],
+                rd['created_at'], rd.get('is_test', 0) or 0,
+            ])
+        zf.writestr('messages.csv', csv_buf.getvalue())
+    buf.seek(0)
+    fname = f"messages_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=fname)
+
+
+MESSAGES_CSV_FIELDS = ['name', 'company', 'phone', 'email', 'subject', 'need', 'product', 'status', 'source', 'is_test']
+SAMPLES_CSV_FIELDS = ['name', 'phone', 'company', 'address', 'product', 'quantity', 'note', 'status', 'is_test']
+
+def _import_messages_rows(rows):
+    db = get_db()
+    inserted, skipped, errors = 0, 0, []
+    for idx, row in enumerate(rows, 1):
+        try:
+            name = (row.get('name') or '').strip()
+            phone = (row.get('phone') or '').strip()
+            if not name or not phone:
+                errors.append({'row': idx, 'msg': 'name 或 phone 为空'})
+                continue
+            exists = db.execute('SELECT id FROM messages WHERE name=? AND phone=? AND is_test=0', (name, phone)).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            values = {
+                'name': name,
+                'company': row.get('company', ''),
+                'phone': phone,
+                'email': row.get('email', ''),
+                'subject': row.get('subject', ''),
+                'need': row.get('need', ''),
+                'product': row.get('product', ''),
+                'status': row.get('status', '待跟进'),
+                'source': row.get('source', 'import'),
+                'is_test': 1 if str(row.get('is_test', '0')).strip() in ('1', 'true', 'True') else 0,
+            }
+            cols = ','.join(values.keys())
+            placeholders = ','.join(f':{k}' for k in values.keys())
+            db.execute(f'INSERT INTO messages ({cols}) VALUES ({placeholders})', values)
+            inserted += 1
+        except Exception as e:
+            errors.append({'row': idx, 'msg': str(e)})
+    db.commit()
+    return inserted, skipped, errors
+
+
+@app.route('/api/admin/messages/import', methods=['POST'])
+@require_auth
+def import_messages():
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未上传文件'}), 400
+    f = request.files['file']
+    filename = f.filename or ''
+    data = f.read()
+    try:
+        if filename.lower().endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                csv_name = next((n for n in zf.namelist() if n.lower().endswith('.csv')), None)
+                if not csv_name:
+                    return jsonify({'ok': False, 'msg': 'zip 中未找到 csv'}), 400
+                text = zf.read(csv_name).decode('utf-8-sig', errors='replace')
+        else:
+            text = data.decode('utf-8-sig', errors='replace')
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'文件解析失败: {e}'}), 400
+    try:
+        rows = _parse_csv_text(text)
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'CSV 解析失败: {e}'}), 400
+    if not rows:
+        return jsonify({'ok': False, 'msg': 'CSV 为空'}), 400
+    inserted, skipped, errors = _import_messages_rows(rows)
+    return jsonify({'ok': True, 'inserted': inserted, 'skipped': skipped, 'errors': errors, 'total': len(rows)})
+
+
+@app.route('/api/admin/sample-requests/export', methods=['GET'])
+@require_auth
+def export_sample_requests():
+    from flask import send_file
+    db = get_db()
+    rows = db.execute('SELECT * FROM samples ORDER BY id DESC').fetchall()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        csv_buf = io.StringIO()
+        csv_buf.write('\ufeff')
+        writer = csv.writer(csv_buf)
+        writer.writerow(['id', 'name', 'phone', 'company', 'address', 'product', 'quantity', 'note', 'status', 'created_at', 'is_test'])
+        for r in rows:
+            rd = dict(r)
+            writer.writerow([
+                rd['id'], rd['name'], rd['phone'], rd['company'], rd['address'],
+                rd['product'], rd.get('quantity') or '', rd['note'], rd['status'],
+                rd['created_at'], rd.get('is_test', 0) or 0,
+            ])
+        zf.writestr('sample_requests.csv', csv_buf.getvalue())
+    buf.seek(0)
+    fname = f"sample_requests_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=fname)
+
+
+def _import_samples_rows(rows):
+    db = get_db()
+    inserted, skipped, errors = 0, 0, []
+    for idx, row in enumerate(rows, 1):
+        try:
+            name = (row.get('name') or '').strip()
+            phone = (row.get('phone') or '').strip()
+            if not name or not phone:
+                errors.append({'row': idx, 'msg': 'name 或 phone 为空'})
+                continue
+            exists = db.execute('SELECT id FROM samples WHERE name=? AND phone=? AND is_test=0', (name, phone)).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            values = {
+                'name': name,
+                'phone': phone,
+                'company': row.get('company', ''),
+                'address': row.get('address', ''),
+                'product': row.get('product', ''),
+                'quantity': row.get('quantity', ''),
+                'note': row.get('note', ''),
+                'status': row.get('status', '待处理'),
+                'is_test': 1 if str(row.get('is_test', '0')).strip() in ('1', 'true', 'True') else 0,
+            }
+            cols = ','.join(values.keys())
+            placeholders = ','.join(f':{k}' for k in values.keys())
+            db.execute(f'INSERT INTO samples ({cols}) VALUES ({placeholders})', values)
+            inserted += 1
+        except Exception as e:
+            errors.append({'row': idx, 'msg': str(e)})
+    db.commit()
+    return inserted, skipped, errors
+
+
+@app.route('/api/admin/sample-requests/import', methods=['POST'])
+@require_auth
+def import_sample_requests():
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未上传文件'}), 400
+    f = request.files['file']
+    filename = f.filename or ''
+    data = f.read()
+    try:
+        if filename.lower().endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                csv_name = next((n for n in zf.namelist() if n.lower().endswith('.csv')), None)
+                if not csv_name:
+                    return jsonify({'ok': False, 'msg': 'zip 中未找到 csv'}), 400
+                text = zf.read(csv_name).decode('utf-8-sig', errors='replace')
+        else:
+            text = data.decode('utf-8-sig', errors='replace')
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'文件解析失败: {e}'}), 400
+    try:
+        rows = _parse_csv_text(text)
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'CSV 解析失败: {e}'}), 400
+    if not rows:
+        return jsonify({'ok': False, 'msg': 'CSV 为空'}), 400
+    inserted, skipped, errors = _import_samples_rows(rows)
+    return jsonify({'ok': True, 'inserted': inserted, 'skipped': skipped, 'errors': errors, 'total': len(rows)})
 
 # --- 前端静态文件（生产环境） ---
 @app.route('/', defaults={'path': ''})

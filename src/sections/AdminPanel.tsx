@@ -50,22 +50,31 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// 导出按钮封装：支持 products / news
+// 导出按钮封装：支持 products / news / messages / samples
 function ExportImportButtons({ type, onSuccess, toast }: {
-  type: 'products' | 'news'
+  type: 'products' | 'news' | 'messages' | 'samples'
   onSuccess: () => void
   toast: ReturnType<typeof useToast>
 }) {
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const TYPE_LABEL: Record<typeof type, string> = {
+    products: '产品', news: '资讯', messages: '留言', samples: '寄样申请',
+  }
+  const label = TYPE_LABEL[type]
+
   const handleExport = async () => {
     try {
-      const blob = type === 'products'
-        ? await api.admin.exportProducts()
-        : await api.admin.exportNews()
+      let blob: Blob
+      switch (type) {
+        case 'products': blob = await api.admin.exportProducts(); break
+        case 'news': blob = await api.admin.exportNews(); break
+        case 'messages': blob = await api.admin.exportMessages(); break
+        case 'samples': blob = await api.admin.exportSampleRequests(); break
+      }
       const today = new Date().toISOString().slice(0, 10)
-      const fname = `${type}_${today}.${type === 'products' ? 'zip' : 'csv'}`
+      const fname = `${type}_${today}.zip`
       downloadBlob(blob, fname)
       toast.success('已生成导出文件，正在下载')
     } catch (e: any) {
@@ -76,15 +85,19 @@ function ExportImportButtons({ type, onSuccess, toast }: {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!confirm(`确定从「${file.name}」导入${type === 'products' ? '产品' : '资讯'}吗？\n同名项会被跳过。`)) {
+    if (!confirm(`确定从「${file.name}」导入${label}吗？\n同名项会被跳过。`)) {
       if (fileRef.current) fileRef.current.value = ''
       return
     }
     setImporting(true)
     try {
-      const result = type === 'products'
-        ? await api.admin.importProducts(file)
-        : await api.admin.importNews(file)
+      let result: any
+      switch (type) {
+        case 'products': result = await api.admin.importProducts(file); break
+        case 'news': result = await api.admin.importNews(file); break
+        case 'messages': result = await api.admin.importMessages(file); break
+        case 'samples': result = await api.admin.importSampleRequests(file); break
+      }
       if (result.ok) {
         toast.success(`导入成功：新增 ${result.inserted} 条${result.errors?.length ? `，失败 ${result.errors.length} 条` : ''}`)
         onSuccess()
@@ -819,6 +832,7 @@ function MessagesView() {
   const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('')
+  const toast = useToast()
 
   const load = useCallback(() => {
     api.admin.getMessages(filter || undefined).then(data => { setMessages(data); setLoading(false) }).catch(() => setLoading(false))
@@ -838,32 +852,21 @@ function MessagesView() {
     load()
   }
 
-  const handleExport = async () => {
-    const blob = await api.admin.exportMessages()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'messages.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   if (loading) return <div className="text-gray-400">加载中...</div>
 
   return (
     <div>
+      <ToastView msgs={toast.msgs} />
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">客户留言管理</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
           <select value={filter} onChange={e => setFilter(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]">
             <option value="">全部</option>
             <option value="待跟进">待跟进</option>
             <option value="已跟进">已跟进</option>
           </select>
-          <button onClick={handleExport} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-700">
-            导出 CSV
-          </button>
+          <ExportImportButtons type="messages" onSuccess={load} toast={toast} />
         </div>
       </div>
       {messages.length === 0 ? (
@@ -913,6 +916,7 @@ function MessagesView() {
 function SamplesView() {
   const [samples, setSamples] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const toast = useToast()
 
   const load = useCallback(() => {
     api.admin.getSamples().then(data => { setSamples(data); setLoading(false) }).catch(() => setLoading(false))
@@ -935,8 +939,10 @@ function SamplesView() {
 
   return (
     <div>
+      <ToastView msgs={toast.msgs} />
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">寄样申请管理</h2>
+        <ExportImportButtons type="samples" onSuccess={load} toast={toast} />
       </div>
       {samples.length === 0 ? (
         <div className="bg-white rounded-xl p-12 text-center text-gray-400">暂无寄样申请</div>
