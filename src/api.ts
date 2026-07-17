@@ -138,6 +138,24 @@ export const api = {
     async deleteProduct(id: number) {
       return request(`/admin/products/${id}`, { method: 'DELETE' })
     },
+    async exportProducts() {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/admin/products/export`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      return res.blob()
+    },
+    async importProducts(file: File) {
+      const token = getToken()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${API_BASE}/admin/products/import`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      })
+      return res.json()
+    },
     async manageSubProduct(data: any, method: 'POST' | 'PUT' | 'DELETE') {
       return request('/admin/sub-products', { method, body: JSON.stringify(data) })
     },
@@ -154,6 +172,24 @@ export const api = {
     },
     async deleteNews(id: number) {
       return request(`/admin/news/${id}`, { method: 'DELETE' })
+    },
+    async exportNews() {
+      const token = getToken()
+      const res = await fetch(`${API_BASE}/admin/news/export`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      return res.blob()
+    },
+    async importNews(file: File) {
+      const token = getToken()
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${API_BASE}/admin/news/import`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      })
+      return res.json()
     },
 
     // 留言

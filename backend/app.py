@@ -5,9 +5,14 @@ Flask + SQLite 轻量级 CMS 后端
 """
 import os
 import json
+import csv
+import io
+import zipfile
 import hashlib
 import secrets
 import sqlite3
+import shutil
+import tempfile
 from datetime import datetime
 from functools import wraps
 from flask import Flask, request, jsonify, g, send_from_directory
@@ -17,6 +22,7 @@ from flask_cors import CORS
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'shengan.db')
 STATIC_DIST = os.path.join(os.path.dirname(BASE_DIR), 'dist')
+IMAGES_DIR = os.path.join(os.path.dirname(BASE_DIR), 'images')
 ADMIN_USER = 'admin'
 ADMIN_PASS_HASH = hashlib.sha256('shengan2026'.encode()).hexdigest()
 SECRET_KEY = secrets.token_hex(32)
@@ -63,6 +69,8 @@ def init_db():
             image_url TEXT DEFAULT '',
             gallery_images TEXT DEFAULT '[]',
             detail_images TEXT DEFAULT '[]',
+            short_name TEXT DEFAULT '',
+            is_test INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now','localtime')),
             updated_at TEXT DEFAULT (datetime('now','localtime'))
         );
@@ -85,6 +93,7 @@ def init_db():
             read_time TEXT DEFAULT '3分钟',
             published INTEGER DEFAULT 1,
             views INTEGER DEFAULT 0,
+            is_test INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now','localtime')),
             updated_at TEXT DEFAULT (datetime('now','localtime'))
         );
@@ -133,6 +142,30 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now','localtime'))
         );
     ''')
+    db.commit()
+    db.close()
+    _migrate_columns()
+
+def _column_exists(db, table, column):
+    """幂等迁移检查：列是否存在"""
+    rows = db.execute(f'PRAGMA table_info({table})').fetchall()
+    return any(r[1] == column for r in rows)
+
+def _migrate_columns():
+    """幂等迁移：为已存在的表补充新列"""
+    db = sqlite3.connect(DB_PATH)
+    migrations = [
+        ('products', 'short_name', "ALTER TABLE products ADD COLUMN short_name TEXT DEFAULT ''"),
+        ('products', 'is_test', 'ALTER TABLE products ADD COLUMN is_test INTEGER DEFAULT 0'),
+        ('news', 'is_test', 'ALTER TABLE news ADD COLUMN is_test INTEGER DEFAULT 0'),
+    ]
+    for table, col, sql in migrations:
+        if not _column_exists(db, table, col):
+            try:
+                db.execute(sql)
+                print(f'[migrate] {table}.{col} added')
+            except Exception as e:
+                print(f'[migrate] {table}.{col} skipped: {e}')
     db.commit()
     db.close()
 
@@ -306,7 +339,7 @@ def verify():
 @app.route('/api/products', methods=['GET'])
 def get_products():
     db = get_db()
-    rows = db.execute('SELECT * FROM products WHERE status="上架" ORDER BY sort_order, id').fetchall()
+    rows = db.execute('SELECT * FROM products WHERE status="上架" AND is_test=0 ORDER BY sort_order, id').fetchall()
     result = []
     for r in rows:
         item = dict(r)
@@ -340,8 +373,8 @@ def admin_create_product():
     data = request.get_json()
     db = get_db()
     db.execute('''
-        INSERT INTO products (name, category, badge, badge_color, highlights, description, specs, use_cases, bg_color, border_color, price, stock, pdd_link, status, sort_order, image_url, gallery_images, detail_images)
-        VALUES (:name, :category, :badge, :badge_color, :highlights, :description, :specs, :use_cases, :bg_color, :border_color, :price, :stock, :pdd_link, :status, :sort_order, :image_url, :gallery_images, :detail_images)
+        INSERT INTO products (name, category, badge, badge_color, highlights, description, specs, use_cases, bg_color, border_color, price, stock, pdd_link, status, sort_order, image_url, gallery_images, detail_images, short_name, is_test)
+        VALUES (:name, :category, :badge, :badge_color, :highlights, :description, :specs, :use_cases, :bg_color, :border_color, :price, :stock, :pdd_link, :status, :sort_order, :image_url, :gallery_images, :detail_images, :short_name, :is_test)
     ''', {
         'name': data.get('name',''), 'category': data.get('category',''),
         'badge': data.get('badge',''), 'badge_color': data.get('badge_color','#0F6637'),
@@ -355,7 +388,9 @@ def admin_create_product():
         'status': data.get('status','上架'), 'sort_order': data.get('sort_order',0),
         'image_url': data.get('image_url',''),
         'gallery_images': json.dumps(data.get('gallery_images',[]), ensure_ascii=False),
-        'detail_images': json.dumps(data.get('detail_images',[]), ensure_ascii=False)
+        'detail_images': json.dumps(data.get('detail_images',[]), ensure_ascii=False),
+        'short_name': data.get('short_name',''),
+        'is_test': 1 if data.get('is_test') else 0
     })
     db.commit()
     return jsonify({'ok': True, 'id': db.execute('SELECT last_insert_rowid()').fetchone()[0]})
@@ -365,7 +400,7 @@ def admin_create_product():
 def admin_update_product(pid):
     data = request.get_json()
     db = get_db()
-    fields = ['name','category','badge','badge_color','highlights','description','specs','use_cases','bg_color','border_color','price','stock','pdd_link','status','sort_order','image_url','gallery_images','detail_images']
+    fields = ['name','category','badge','badge_color','highlights','description','specs','use_cases','bg_color','border_color','price','stock','pdd_link','status','sort_order','image_url','gallery_images','detail_images','short_name','is_test']
     updates = []
     values = {}
     for f in fields:
@@ -373,6 +408,8 @@ def admin_update_product(pid):
             updates.append(f'{f}=:{f}')
             if f in ('highlights','specs','use_cases','gallery_images','detail_images'):
                 values[f] = json.dumps(data[f], ensure_ascii=False) if isinstance(data[f], (list, dict)) else data[f]
+            elif f == 'is_test':
+                values[f] = 1 if data[f] else 0
             else:
                 values[f] = data[f]
     if not updates:
@@ -395,7 +432,7 @@ def admin_delete_product(pid):
 @app.route('/api/products/<int:pid>', methods=['GET'])
 def get_product_detail(pid):
     db = get_db()
-    row = db.execute('SELECT * FROM products WHERE id=?', (pid,)).fetchone()
+    row = db.execute('SELECT * FROM products WHERE id=? AND is_test=0', (pid,)).fetchone()
     if not row:
         return jsonify({'error': '产品不存在'}), 404
     item = dict(row)
@@ -469,9 +506,9 @@ def get_news():
     db = get_db()
     category = request.args.get('category')
     if category and category != '全部':
-        rows = db.execute('SELECT * FROM news WHERE published=1 AND category=? ORDER BY id DESC', (category,)).fetchall()
+        rows = db.execute('SELECT * FROM news WHERE published=1 AND is_test=0 AND category=? ORDER BY id DESC', (category,)).fetchall()
     else:
-        rows = db.execute('SELECT * FROM news WHERE published=1 ORDER BY id DESC').fetchall()
+        rows = db.execute('SELECT * FROM news WHERE published=1 AND is_test=0 ORDER BY id DESC').fetchall()
     result = []
     for r in rows:
         item = dict(r)
@@ -484,7 +521,7 @@ def get_news_detail(nid):
     db = get_db()
     db.execute('UPDATE news SET views=views+1 WHERE id=?', (nid,))
     db.commit()
-    row = db.execute('SELECT * FROM news WHERE id=?', (nid,)).fetchone()
+    row = db.execute('SELECT * FROM news WHERE id=? AND is_test=0', (nid,)).fetchone()
     if not row:
         return jsonify({'error': '不存在'}), 404
     item = dict(row)
@@ -509,14 +546,15 @@ def admin_create_news():
     data = request.get_json()
     db = get_db()
     db.execute('''
-        INSERT INTO news (title, category, summary, content, tags, read_time, published)
-        VALUES (:title, :category, :summary, :content, :tags, :read_time, :published)
+        INSERT INTO news (title, category, summary, content, tags, read_time, published, is_test)
+        VALUES (:title, :category, :summary, :content, :tags, :read_time, :published, :is_test)
     ''', {
         'title': data.get('title',''), 'category': data.get('category',''),
         'summary': data.get('summary',''), 'content': data.get('content',''),
         'tags': json.dumps(data.get('tags',[]), ensure_ascii=False),
         'read_time': data.get('read_time','3分钟'),
-        'published': data.get('published',1)
+        'published': data.get('published',1),
+        'is_test': 1 if data.get('is_test') else 0
     })
     db.commit()
     return jsonify({'ok': True, 'id': db.execute('SELECT last_insert_rowid()').fetchone()[0]})
@@ -528,14 +566,15 @@ def admin_update_news(nid):
     db = get_db()
     db.execute('''
         UPDATE news SET title=:title, category=:category, summary=:summary, content=:content,
-        tags=:tags, read_time=:read_time, published=:published, updated_at=datetime('now','localtime')
+        tags=:tags, read_time=:read_time, published=:published, is_test=:is_test, updated_at=datetime('now','localtime')
         WHERE id=:id
     ''', {
         'id': nid, 'title': data.get('title',''), 'category': data.get('category',''),
         'summary': data.get('summary',''), 'content': data.get('content',''),
         'tags': json.dumps(data.get('tags',[]), ensure_ascii=False),
         'read_time': data.get('read_time','3分钟'),
-        'published': data.get('published',1)
+        'published': data.get('published',1),
+        'is_test': 1 if data.get('is_test') else 0
     })
     db.commit()
     return jsonify({'ok': True})
@@ -686,6 +725,296 @@ def admin_stats():
         'today_samples': db.execute("SELECT COUNT(*) as c FROM samples WHERE date(created_at)=date('now','localtime')").fetchone()['c'],
     }
     return jsonify(stats)
+
+# ============ 批量导入导出（产品/资讯） ============
+PRODUCTS_CSV_FIELDS = [
+    'name', 'short_name', 'category', 'badge', 'badge_color', 'description',
+    'highlights', 'specs', 'use_cases', 'bg_color', 'border_color',
+    'price', 'stock', 'pdd_link', 'status', 'sort_order',
+    'image_url', 'gallery_images', 'detail_images', 'is_test'
+]
+NEWS_CSV_FIELDS = ['title', 'category', 'summary', 'content', 'tags', 'read_time', 'published', 'is_test']
+IMG_FIELDS = ('image_url', 'gallery_images', 'detail_images')
+LIST_FIELDS = ('highlights', 'specs', 'use_cases', 'gallery_images', 'detail_images', 'tags')
+
+def _collect_image_paths(product_row):
+    """从 product 行里提取所有图片路径（去重保序）"""
+    paths = []
+    seen = set()
+    for field in IMG_FIELDS:
+        raw = product_row[field] or ''
+        if field == 'image_url':
+            candidates = [raw.strip()]
+        else:
+            try:
+                candidates = json.loads(raw) if raw else []
+            except Exception:
+                candidates = []
+        for p in candidates:
+            p = (p or '').strip().lstrip('/')
+            if p and not p.startswith('http') and p not in seen:
+                seen.add(p)
+                paths.append(p)
+    return paths
+
+def _resolve_local_image(rel_path):
+    """把相对路径映射到 VPS 上的绝对路径"""
+    candidates = [
+        os.path.join(IMAGES_DIR, rel_path),
+        os.path.join('/var/www/shengan-seal', rel_path),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+@app.route('/api/admin/products/export', methods=['GET'])
+@require_auth
+def export_products():
+    """导出产品为 zip（含 products.csv + images/ 子目录）"""
+    from flask import send_file
+    db = get_db()
+    rows = db.execute('SELECT * FROM products WHERE is_test=0 ORDER BY id').fetchall()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 写 CSV
+        csv_buf = io.StringIO()
+        # 加上 utf-8-sig BOM 让 Excel 不乱码
+        csv_buf.write('\ufeff')
+        writer = csv.writer(csv_buf)
+        writer.writerow(PRODUCTS_CSV_FIELDS)
+        for r in rows:
+            line = []
+            for f in PRODUCTS_CSV_FIELDS:
+                v = r[f] if f in r.keys() else ''
+                if f in LIST_FIELDS:
+                    try:
+                        arr = json.loads(v) if v else []
+                    except Exception:
+                        arr = []
+                    line.append('|'.join(str(x) for x in arr))
+                elif f == 'is_test':
+                    line.append(v if v is not None else 0)
+                else:
+                    line.append('' if v is None else str(v))
+            writer.writerow(line)
+        zf.writestr('products.csv', csv_buf.getvalue())
+
+        # 打包被引用到的图片
+        included = set()
+        for r in rows:
+            for rel in _collect_image_paths(dict(r)):
+                if rel in included:
+                    continue
+                abs_path = _resolve_local_image(rel)
+                if abs_path:
+                    # rel 是相对路径（可能含 images/...），原样打包为 zip 内的相对路径
+                    zf.write(abs_path, arcname=rel)
+                    included.add(rel)
+
+    buf.seek(0)
+    fname = f"products_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=fname)
+
+
+@app.route('/api/admin/news/export', methods=['GET'])
+@require_auth
+def export_news():
+    """导出资讯为 zip（仅含 news.csv）"""
+    from flask import send_file
+    db = get_db()
+    rows = db.execute('SELECT * FROM news WHERE is_test=0 ORDER BY id').fetchall()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        csv_buf = io.StringIO()
+        csv_buf.write('\ufeff')
+        writer = csv.writer(csv_buf)
+        writer.writerow(NEWS_CSV_FIELDS)
+        for r in rows:
+            line = []
+            for f in NEWS_CSV_FIELDS:
+                v = r[f] if f in r.keys() else ''
+                if f in LIST_FIELDS:
+                    try:
+                        arr = json.loads(v) if v else []
+                    except Exception:
+                        arr = []
+                    line.append('|'.join(str(x) for x in arr))
+                elif f == 'published' or f == 'is_test':
+                    line.append(v if v is not None else 0)
+                else:
+                    line.append('' if v is None else str(v))
+            writer.writerow(line)
+        zf.writestr('news.csv', csv_buf.getvalue())
+
+    buf.seek(0)
+    fname = f"news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=fname)
+
+
+def _parse_csv_text(text):
+    """解析 CSV（兼容 utf-8-sig BOM + 管道分隔的多值字段）"""
+    if text.startswith('\ufeff'):
+        text = text[1:]
+    reader = csv.DictReader(io.StringIO(text))
+    rows = []
+    for row in reader:
+        # 转换列表字段：'a|b|c' -> ['a','b','c']；空字符串 -> []
+        for f in LIST_FIELDS:
+            if f in row:
+                v = row[f]
+                if v is None or v == '':
+                    row[f] = []
+                elif '|' in v:
+                    row[f] = [x.strip() for x in v.split('|') if x.strip()]
+                else:
+                    row[f] = [v]
+        rows.append(row)
+    return rows
+
+def _import_products_rows(rows):
+    """逐行插入产品，跳过重名"""
+    db = get_db()
+    inserted, skipped, errors = 0, 0, []
+    for idx, row in enumerate(rows, 1):
+        try:
+            name = (row.get('name') or '').strip()
+            if not name:
+                errors.append({'row': idx, 'msg': 'name 为空'})
+                continue
+            exists = db.execute('SELECT id FROM products WHERE name=? AND is_test=0', (name,)).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            values = {
+                'name': name,
+                'short_name': row.get('short_name', ''),
+                'category': row.get('category', '') or '未分类',
+                'badge': row.get('badge', ''),
+                'badge_color': row.get('badge_color', '#0F6637'),
+                'description': row.get('description', ''),
+                'highlights': json.dumps(row.get('highlights', []), ensure_ascii=False),
+                'specs': json.dumps(row.get('specs', []), ensure_ascii=False),
+                'use_cases': json.dumps(row.get('use_cases', []), ensure_ascii=False),
+                'bg_color': row.get('bg_color', '#f0f9f4'),
+                'border_color': row.get('border_color', '#7ecfa0'),
+                'price': row.get('price', ''),
+                'stock': row.get('stock', '充足'),
+                'pdd_link': row.get('pdd_link', 'https://mobile.yangkeduo.com'),
+                'status': row.get('status', '上架'),
+                'sort_order': int(row.get('sort_order') or 0),
+                'image_url': row.get('image_url', ''),
+                'gallery_images': json.dumps(row.get('gallery_images', []), ensure_ascii=False),
+                'detail_images': json.dumps(row.get('detail_images', []), ensure_ascii=False),
+                'is_test': 1 if str(row.get('is_test', '0')).strip() in ('1', 'true', 'True') else 0,
+            }
+            placeholders = ','.join(f':{k}' for k in values.keys())
+            cols = ','.join(values.keys())
+            db.execute(f'INSERT INTO products ({cols}) VALUES ({placeholders})', values)
+            inserted += 1
+        except Exception as e:
+            errors.append({'row': idx, 'msg': str(e)})
+    db.commit()
+    return inserted, skipped, errors
+
+@app.route('/api/admin/products/import', methods=['POST'])
+@require_auth
+def import_products():
+    """导入产品 csv/zip，form 字段名 'file'"""
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未上传文件'}), 400
+    f = request.files['file']
+    filename = f.filename or ''
+    data = f.read()
+    try:
+        if filename.lower().endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                csv_name = next((n for n in zf.namelist() if n.lower().endswith('.csv')), None)
+                if not csv_name:
+                    return jsonify({'ok': False, 'msg': 'zip 中未找到 csv'}), 400
+                text = zf.read(csv_name).decode('utf-8-sig', errors='replace')
+        else:
+            text = data.decode('utf-8-sig', errors='replace')
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'文件解析失败: {e}'}), 400
+
+    try:
+        rows = _parse_csv_text(text)
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'CSV 解析失败: {e}'}), 400
+
+    if not rows:
+        return jsonify({'ok': False, 'msg': 'CSV 为空'}), 400
+
+    inserted, skipped, errors = _import_products_rows(rows)
+    return jsonify({'ok': True, 'inserted': inserted, 'skipped': skipped, 'errors': errors, 'total': len(rows)})
+
+
+def _import_news_rows(rows):
+    db = get_db()
+    inserted, skipped, errors = 0, 0, []
+    for idx, row in enumerate(rows, 1):
+        try:
+            title = (row.get('title') or '').strip()
+            if not title:
+                errors.append({'row': idx, 'msg': 'title 为空'})
+                continue
+            exists = db.execute('SELECT id FROM news WHERE title=? AND is_test=0', (title,)).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            values = {
+                'title': title,
+                'category': row.get('category', ''),
+                'summary': row.get('summary', ''),
+                'content': row.get('content', ''),
+                'tags': json.dumps(row.get('tags', []), ensure_ascii=False),
+                'read_time': row.get('read_time', '3分钟'),
+                'published': int(row.get('published') or 1),
+                'is_test': 1 if str(row.get('is_test', '0')).strip() in ('1', 'true', 'True') else 0,
+            }
+            placeholders = ','.join(f':{k}' for k in values.keys())
+            cols = ','.join(values.keys())
+            db.execute(f'INSERT INTO news ({cols}) VALUES ({placeholders})', values)
+            inserted += 1
+        except Exception as e:
+            errors.append({'row': idx, 'msg': str(e)})
+    db.commit()
+    return inserted, skipped, errors
+
+
+@app.route('/api/admin/news/import', methods=['POST'])
+@require_auth
+def import_news():
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'msg': '未上传文件'}), 400
+    f = request.files['file']
+    filename = f.filename or ''
+    data = f.read()
+    try:
+        if filename.lower().endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                csv_name = next((n for n in zf.namelist() if n.lower().endswith('.csv')), None)
+                if not csv_name:
+                    return jsonify({'ok': False, 'msg': 'zip 中未找到 csv'}), 400
+                text = zf.read(csv_name).decode('utf-8-sig', errors='replace')
+        else:
+            text = data.decode('utf-8-sig', errors='replace')
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'文件解析失败: {e}'}), 400
+
+    try:
+        rows = _parse_csv_text(text)
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'CSV 解析失败: {e}'}), 400
+
+    if not rows:
+        return jsonify({'ok': False, 'msg': 'CSV 为空'}), 400
+
+    inserted, skipped, errors = _import_news_rows(rows)
+    return jsonify({'ok': True, 'inserted': inserted, 'skipped': skipped, 'errors': errors, 'total': len(rows)})
 
 # --- 导出留言 CSV ---
 @app.route('/api/admin/messages/export', methods=['GET'])

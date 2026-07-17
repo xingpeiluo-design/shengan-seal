@@ -8,3 +8,5 @@ __pycache__/
 *.db
 pdd_images/
 backend/shengan.db
+test-results/
+playwright-report/

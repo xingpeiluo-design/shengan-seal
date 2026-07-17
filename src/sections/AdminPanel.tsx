@@ -1,5 +1,131 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api'
+
+interface ToastMsg {
+  id: number
+  type: 'success' | 'error' | 'info'
+  text: string
+}
+
+// ============ Toast 轻提示 ============
+function ToastView({ msgs }: { msgs: ToastMsg[] }) {
+  if (msgs.length === 0) return null
+  return (
+    <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {msgs.map(m => (
+        <div
+          key={m.id}
+          className={`px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-white animate-fade-in-down pointer-events-auto ${
+            m.type === 'success' ? 'bg-green-600' : m.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+          }`}
+        >
+          {m.text}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function useToast() {
+  const [msgs, setMsgs] = useState<ToastMsg[]>([])
+  const idRef = useRef(0)
+  const push = useCallback((type: ToastMsg['type'], text: string, ttl = 3500) => {
+    idRef.current += 1
+    const id = idRef.current
+    setMsgs(prev => [...prev, { id, type, text }])
+    setTimeout(() => setMsgs(prev => prev.filter(m => m.id !== id)), ttl)
+  }, [])
+  return { msgs, push, success: (t: string) => push('success', t), error: (t: string) => push('error', t), info: (t: string) => push('info', t) }
+}
+
+// 触发浏览器下载 blob
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+// 导出按钮封装：支持 products / news
+function ExportImportButtons({ type, onSuccess, toast }: {
+  type: 'products' | 'news'
+  onSuccess: () => void
+  toast: ReturnType<typeof useToast>
+}) {
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleExport = async () => {
+    try {
+      const blob = type === 'products'
+        ? await api.admin.exportProducts()
+        : await api.admin.exportNews()
+      const today = new Date().toISOString().slice(0, 10)
+      const fname = `${type}_${today}.${type === 'products' ? 'zip' : 'csv'}`
+      downloadBlob(blob, fname)
+      toast.success('已生成导出文件，正在下载')
+    } catch (e: any) {
+      toast.error(e.message || '导出失败')
+    }
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!confirm(`确定从「${file.name}」导入${type === 'products' ? '产品' : '资讯'}吗？\n同名项会被跳过。`)) {
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
+    setImporting(true)
+    try {
+      const result = type === 'products'
+        ? await api.admin.importProducts(file)
+        : await api.admin.importNews(file)
+      if (result.ok) {
+        toast.success(`导入成功：新增 ${result.inserted} 条${result.errors?.length ? `，失败 ${result.errors.length} 条` : ''}`)
+        onSuccess()
+      } else {
+        toast.error(result.error || '导入失败')
+      }
+    } catch (e: any) {
+      toast.error(e.message || '导入失败')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,.zip"
+        onChange={handleImport}
+        className="hidden"
+        data-testid={`import-${type}-input`}
+      />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={importing}
+        className="border border-[#0F6637] text-[#0F6637] px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#e8f5ec] transition-colors disabled:opacity-50"
+      >
+        {importing ? '导入中...' : '📥 导入'}
+      </button>
+      <button
+        onClick={handleExport}
+        data-testid={`export-${type}`}
+        className="border border-[#0F6637] text-[#0F6637] px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#e8f5ec] transition-colors"
+      >
+        📤 导出全部
+      </button>
+    </div>
+  )
+}
 
 interface AdminPanelProps {
   onBack: () => void
@@ -199,6 +325,7 @@ function ProductsView() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<any | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const toast = useToast()
 
   const load = useCallback(() => {
     api.admin.getProducts().then(data => { setProducts(data); setLoading(false) }).catch(() => setLoading(false))
@@ -231,14 +358,18 @@ function ProductsView() {
 
   return (
     <div>
+      <ToastView msgs={toast.msgs} />
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">产品管理</h2>
-        <button
-          onClick={() => { setEditing(null); setShowForm(true) }}
-          className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
-        >
-          + 新增产品
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportImportButtons type="products" onSuccess={load} toast={toast} />
+          <button
+            onClick={() => { setEditing(null); setShowForm(true) }}
+            className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
+          >
+            + 新增产品
+          </button>
+        </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <table className="w-full text-sm">
@@ -530,6 +661,7 @@ function NewsView() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<any | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const toast = useToast()
 
   const load = useCallback(() => {
     api.admin.getNews().then(data => { setNews(data); setLoading(false) }).catch(() => setLoading(false))
@@ -562,14 +694,18 @@ function NewsView() {
 
   return (
     <div>
+      <ToastView msgs={toast.msgs} />
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">资讯管理</h2>
-        <button
-          onClick={() => { setEditing(null); setShowForm(true) }}
-          className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
-        >
-          + 发布新资讯
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportImportButtons type="news" onSuccess={load} toast={toast} />
+          <button
+            onClick={() => { setEditing(null); setShowForm(true) }}
+            className="bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] transition-colors"
+          >
+            + 发布新资讯
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-3">
         {news.map(item => (
