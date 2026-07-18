@@ -1,0 +1,37 @@
+---
+// BaseLayout.astro - 全局布局
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = '盛安密封是湖南长沙专业的包覆式密封条源头厂家，主营隐形门密封条、推拉门隔音胶条、防盗门密封条、自粘门窗胶条、铝合金密封条等产品。8年密封条生产经验，支持OEM定制，全国发货，工厂直供价格优势。热线：13507402179' } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <meta name="keywords" content="密封条,包覆式密封条,隐形门密封条,推拉门密封条,防盗门密封条,自粘密封条,铝合金密封条,门窗密封条,湖南密封条厂家,长沙密封条" />
+  <meta name="robots" content="index, follow" />
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="盛安密封" />
+  <meta property="og:locale" content="zh_CN" />
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/webp" href="/shengan/images/logo/store_logo.webp" />
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <slot />
+</body>
+</html>

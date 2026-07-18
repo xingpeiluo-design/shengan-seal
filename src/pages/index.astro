@@ -1,0 +1,9 @@
+---
+// index.astro - 首页（SSG 静态生成）
+import BaseLayout from '../layouts/BaseLayout.astro';
+import HomePage from '../pages/HomePage';
+---
+
+<BaseLayout title="盛安密封 - 包覆式密封条源头厂家 | 推拉门隔音密封胶条厂家">
+  <HomePage client:load />
+</BaseLayout>
