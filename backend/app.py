@@ -140,6 +140,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS admin_tokens (
             token TEXT PRIMARY KEY,
             user TEXT DEFAULT 'admin',
+            expires_at TEXT,
             created_at TEXT DEFAULT (datetime('now','localtime'))
         );
 
@@ -190,6 +191,7 @@ def _migrate_columns():
         ('samples', 'is_test', 'ALTER TABLE samples ADD COLUMN is_test INTEGER DEFAULT 0'),
         ('samples', 'quantity', "ALTER TABLE samples ADD COLUMN quantity TEXT DEFAULT ''"),
         ('admin_tokens', 'user', "ALTER TABLE admin_tokens ADD COLUMN user TEXT DEFAULT 'admin'"),
+        ('admin_tokens', 'expires_at', "ALTER TABLE admin_tokens ADD COLUMN expires_at TEXT"),
         ('admin_users', 'remark', "ALTER TABLE admin_users ADD COLUMN remark TEXT DEFAULT ''"),
         ('login_logs', 'user_agent', "ALTER TABLE login_logs ADD COLUMN user_agent TEXT DEFAULT ''"),
     ]
@@ -333,6 +335,8 @@ def seed_data():
 # 锁定策略
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 30
+# Token 有效期
+TOKEN_EXPIRE_HOURS = 8
 
 def _get_client_ip():
     """获取客户端 IP（考虑 nginx 反代）"""
@@ -352,12 +356,16 @@ def _hash_password(pwd):
 
 def generate_token(user='admin'):
     token = secrets.token_hex(24)
+    expires_at = (datetime.now() + timedelta(hours=TOKEN_EXPIRE_HOURS)).strftime('%Y-%m-%d %H:%M:%S')
     db = get_db()
     try:
-        db.execute('INSERT INTO admin_tokens (token, user) VALUES (?, ?)', (token, user))
+        db.execute('INSERT INTO admin_tokens (token, user, expires_at) VALUES (?, ?, ?)', (token, user, expires_at))
     except sqlite3.IntegrityError:
-        # 兼容旧表结构（无 user 字段）
-        db.execute('INSERT INTO admin_tokens (token) VALUES (?)', (token,))
+        # 兼容旧表结构（无 user/expires_at 字段）
+        try:
+            db.execute('INSERT INTO admin_tokens (token, user, expires_at) VALUES (?, ?, ?)', (token, user, expires_at))
+        except Exception:
+            db.execute('INSERT INTO admin_tokens (token) VALUES (?)', (token,))
     db.commit()
     return token
 
@@ -374,8 +382,19 @@ def require_auth(f):
         row = db.execute('SELECT * FROM admin_tokens WHERE token=?', (token,)).fetchone()
         if not row:
             return jsonify({'error': '登录已过期'}), 401
+        # 检查 token 是否过期
+        if 'expires_at' in row.keys() and row['expires_at']:
+            try:
+                expires_at = datetime.strptime(row['expires_at'], '%Y-%m-%d %H:%M:%S')
+                if expires_at < datetime.now():
+                    # 删除过期 token
+                    db.execute('DELETE FROM admin_tokens WHERE token=?', (token,))
+                    db.commit()
+                    return jsonify({'error': '登录已过期，请重新登录'}), 401
+            except (ValueError, TypeError):
+                pass
         # 将当前用户信息注入 g，供后续接口使用
-        g.current_user = row['user'] if 'user' in row.keys() else 'admin'
+        g.current_user = row['user'] if 'user' in row.keys() and row['user'] else 'admin'
         return f(*args, **kwargs)
     return decorated
 

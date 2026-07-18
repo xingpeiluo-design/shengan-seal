@@ -216,7 +216,7 @@ function LoginPage({ onLogin, onBack }: { onLogin: () => void; onBack: () => voi
           >
             {loading ? '登录中...' : '登录管理后台'}
           </button>
-          <div className="text-xs text-gray-400 text-center">默认账号：admin / shengan2026</div>
+          <div className="text-xs text-gray-400 text-center">初次使用请联系超级管理员获取账号</div>
         </form>
         <button
           onClick={onBack}
