@@ -13,7 +13,7 @@ import secrets
 import sqlite3
 import shutil
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, g, send_from_directory
 from flask_cors import CORS
@@ -139,6 +139,31 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS admin_tokens (
             token TEXT PRIMARY KEY,
+            user TEXT DEFAULT 'admin',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'admin',
+            status TEXT DEFAULT 'active',
+            last_login_at TEXT,
+            last_login_ip TEXT,
+            failed_attempts INTEGER DEFAULT 0,
+            locked_until TEXT,
+            remark TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS login_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            success INTEGER DEFAULT 0,
+            reason TEXT,
             created_at TEXT DEFAULT (datetime('now','localtime'))
         );
     ''')
@@ -154,6 +179,7 @@ def _column_exists(db, table, column):
 def _migrate_columns():
     """幂等迁移：为已存在的表补充新列"""
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
     migrations = [
         ('products', 'short_name', "ALTER TABLE products ADD COLUMN short_name TEXT DEFAULT ''"),
         ('products', 'is_test', 'ALTER TABLE products ADD COLUMN is_test INTEGER DEFAULT 0'),
@@ -163,6 +189,9 @@ def _migrate_columns():
         ('messages', 'subject', "ALTER TABLE messages ADD COLUMN subject TEXT DEFAULT ''"),
         ('samples', 'is_test', 'ALTER TABLE samples ADD COLUMN is_test INTEGER DEFAULT 0'),
         ('samples', 'quantity', "ALTER TABLE samples ADD COLUMN quantity TEXT DEFAULT ''"),
+        ('admin_tokens', 'user', "ALTER TABLE admin_tokens ADD COLUMN user TEXT DEFAULT 'admin'"),
+        ('admin_users', 'remark', "ALTER TABLE admin_users ADD COLUMN remark TEXT DEFAULT ''"),
+        ('login_logs', 'user_agent', "ALTER TABLE login_logs ADD COLUMN user_agent TEXT DEFAULT ''"),
     ]
     for table, col, sql in migrations:
         if not _column_exists(db, table, col):
@@ -171,6 +200,18 @@ def _migrate_columns():
                 print(f'[migrate] {table}.{col} added')
             except Exception as e:
                 print(f'[migrate] {table}.{col} skipped: {e}')
+
+    # 迁移默认 admin 账号到 admin_users 表
+    if db.execute('SELECT COUNT(*) as c FROM admin_users').fetchone()['c'] == 0:
+        try:
+            db.execute(
+                'INSERT INTO admin_users (username, password_hash, role, remark) VALUES (?, ?, ?, ?)',
+                (ADMIN_USER, ADMIN_PASS_HASH, 'super_admin', '系统初始化账号（自动迁移）')
+            )
+            print('[migrate] 默认 admin 账号已迁移到 admin_users')
+        except Exception as e:
+            print(f'[migrate] 默认账号迁移失败: {e}')
+
     db.commit()
     db.close()
 
@@ -289,6 +330,26 @@ def seed_data():
     db.close()
 
 # ============ 认证 ============
+# 锁定策略
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 30
+
+def _get_client_ip():
+    """获取客户端 IP（考虑 nginx 反代）"""
+    return request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr or ''
+
+def _log_login(username, success, reason=''):
+    """记录登录日志"""
+    db = get_db()
+    db.execute(
+        'INSERT INTO login_logs (username, ip, user_agent, success, reason) VALUES (?, ?, ?, ?, ?)',
+        (username, _get_client_ip(), request.headers.get('User-Agent', '')[:200], 1 if success else 0, reason)
+    )
+    db.commit()
+
+def _hash_password(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
 def generate_token(user='admin'):
     token = secrets.token_hex(24)
     db = get_db()
@@ -313,6 +374,20 @@ def require_auth(f):
         row = db.execute('SELECT * FROM admin_tokens WHERE token=?', (token,)).fetchone()
         if not row:
             return jsonify({'error': '登录已过期'}), 401
+        # 将当前用户信息注入 g，供后续接口使用
+        g.current_user = row['user'] if 'user' in row.keys() else 'admin'
+        return f(*args, **kwargs)
+    return decorated
+
+def require_super_admin(f):
+    """要求超级管理员权限"""
+    @wraps(f)
+    @require_auth
+    def decorated(*args, **kwargs):
+        db = get_db()
+        row = db.execute('SELECT role FROM admin_users WHERE username=?', (g.current_user,)).fetchone()
+        if not row or row['role'] != 'super_admin':
+            return jsonify({'error': '需要超级管理员权限'}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -321,14 +396,95 @@ def require_auth(f):
 # --- 认证 ---
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    user = data.get('user', '')
-    pwd = data.get('pass', '')
-    pwd_hash = hashlib.sha256(pwd.encode()).hexdigest()
-    if user == ADMIN_USER and pwd_hash == ADMIN_PASS_HASH:
-        token = generate_token()
-        return jsonify({'token': token, 'user': user})
-    return jsonify({'error': '账号或密码错误'}), 401
+    data = request.get_json() or {}
+    user = (data.get('user') or '').strip()
+    pwd = data.get('pass') or ''
+    if not user or not pwd:
+        return jsonify({'error': '账号和密码不能为空'}), 400
+
+    pwd_hash = _hash_password(pwd)
+    db = get_db()
+    row = db.execute('SELECT * FROM admin_users WHERE username=?', (user,)).fetchone()
+
+    if not row:
+        _log_login(user, False, '账号不存在')
+        return jsonify({'error': '账号或密码错误'}), 401
+
+    # 检查账号状态
+    if row['status'] != 'active':
+        _log_login(user, False, '账号已禁用')
+        return jsonify({'error': '账号已被禁用，请联系超级管理员'}), 403
+
+    # 检查锁定状态
+    if row['locked_until']:
+        try:
+            locked_until_dt = datetime.strptime(row['locked_until'], '%Y-%m-%d %H:%M:%S')
+            if locked_until_dt > datetime.now():
+                remaining = int((locked_until_dt - datetime.now()).total_seconds() // 60) + 1
+                _log_login(user, False, f'账号锁定中（还剩{remaining}分钟）')
+                return jsonify({
+                    'error': f'登录失败次数过多，账号已锁定，还剩 {remaining} 分钟',
+                    'locked': True,
+                    'remaining_minutes': remaining
+                }), 423
+        except (ValueError, TypeError):
+            pass
+
+    # 验证密码
+    if pwd_hash != row['password_hash']:
+        # 累计失败次数
+        failed = (row['failed_attempts'] or 0) + 1
+        locked_until = None
+        if failed >= MAX_FAILED_ATTEMPTS:
+            locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)).strftime('%Y-%m-%d %H:%M:%S')
+            reason = f'密码错误（连续{failed}次，已锁定{LOCKOUT_MINUTES}分钟）'
+        else:
+            reason = f'密码错误（连续{failed}次）'
+        db.execute('UPDATE admin_users SET failed_attempts=?, locked_until=? WHERE id=?',
+                   (failed, locked_until, row['id']))
+        db.commit()
+        _log_login(user, False, reason)
+        remaining_attempts = max(0, MAX_FAILED_ATTEMPTS - failed)
+        if locked_until:
+            return jsonify({
+                'error': f'密码错误，账号已锁定 {LOCKOUT_MINUTES} 分钟',
+                'locked': True
+            }), 423
+        return jsonify({
+            'error': f'账号或密码错误，还剩 {remaining_attempts} 次尝试机会',
+            'remaining_attempts': remaining_attempts
+        }), 401
+
+    # 登录成功
+    db.execute('UPDATE admin_users SET failed_attempts=0, locked_until=NULL, last_login_at=?, last_login_ip=? WHERE id=?',
+               (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), _get_client_ip(), row['id']))
+    db.commit()
+    _log_login(user, True, '登录成功')
+    token = generate_token(user)
+    return jsonify({'token': token, 'user': user, 'role': row['role']})
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@require_auth
+def change_password():
+    """当前用户修改自己的密码"""
+    data = request.get_json() or {}
+    old_pwd = data.get('old_password') or ''
+    new_pwd = data.get('new_password') or ''
+    if not old_pwd or not new_pwd:
+        return jsonify({'error': '原密码和新密码不能为空'}), 400
+    if len(new_pwd) < 6:
+        return jsonify({'error': '新密码至少6位'}), 400
+
+    db = get_db()
+    row = db.execute('SELECT * FROM admin_users WHERE username=?', (g.current_user,)).fetchone()
+    if not row:
+        return jsonify({'error': '账号不存在'}), 404
+    if _hash_password(old_pwd) != row['password_hash']:
+        return jsonify({'error': '原密码错误'}), 401
+
+    db.execute('UPDATE admin_users SET password_hash=? WHERE id=?', (_hash_password(new_pwd), row['id']))
+    db.commit()
+    return jsonify({'ok': True, 'message': '密码修改成功'})
 
 @app.route('/api/auth/verify', methods=['GET'])
 def verify():
@@ -338,7 +494,125 @@ def verify():
         return jsonify({'valid': False}), 401
     db = get_db()
     row = db.execute('SELECT * FROM admin_tokens WHERE token=?', (token,)).fetchone()
-    return jsonify({'valid': bool(row)})
+    if not row:
+        return jsonify({'valid': False}), 401
+    user = row['user'] if 'user' in row.keys() and row['user'] else 'admin'
+    # 查询角色
+    role_row = db.execute('SELECT role, status FROM admin_users WHERE username=?', (user,)).fetchone()
+    role = role_row['role'] if role_row else 'admin'
+    return jsonify({'valid': True, 'user': user, 'role': role})
+
+# --- 账号管理（仅超级管理员） ---
+@app.route('/api/admin/users', methods=['GET'])
+@require_super_admin
+def admin_list_users():
+    """账号列表"""
+    db = get_db()
+    rows = db.execute('SELECT id, username, role, status, last_login_at, last_login_ip, failed_attempts, locked_until, remark, created_at FROM admin_users ORDER BY id').fetchall()
+    result = [dict(r) for r in rows]
+    return jsonify(result)
+
+@app.route('/api/admin/users', methods=['POST'])
+@require_super_admin
+def admin_create_user():
+    """新增账号"""
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    role = data.get('role') or 'admin'
+    remark = data.get('remark') or ''
+
+    if not username or not password:
+        return jsonify({'error': '用户名和密码不能为空'}), 400
+    if len(username) < 2 or len(username) > 32:
+        return jsonify({'error': '用户名长度需为 2-32 字符'}), 400
+    if len(password) < 6:
+        return jsonify({'error': '密码至少 6 位'}), 400
+    if role not in ('super_admin', 'admin'):
+        return jsonify({'error': '角色参数无效'}), 400
+
+    db = get_db()
+    if db.execute('SELECT 1 FROM admin_users WHERE username=?', (username,)).fetchone():
+        return jsonify({'error': '用户名已存在'}), 409
+
+    db.execute(
+        'INSERT INTO admin_users (username, password_hash, role, remark) VALUES (?, ?, ?, ?)',
+        (username, _hash_password(password), role, remark)
+    )
+    db.commit()
+    return jsonify({'ok': True, 'message': f'账号 {username} 创建成功'})
+
+@app.route('/api/admin/users/<int:uid>/password', methods=['PUT'])
+@require_super_admin
+def admin_reset_password(uid):
+    """超级管理员重置任意账号密码"""
+    data = request.get_json() or {}
+    new_pwd = data.get('password') or ''
+    if len(new_pwd) < 6:
+        return jsonify({'error': '密码至少 6 位'}), 400
+
+    db = get_db()
+    row = db.execute('SELECT username FROM admin_users WHERE id=?', (uid,)).fetchone()
+    if not row:
+        return jsonify({'error': '账号不存在'}), 404
+
+    db.execute('UPDATE admin_users SET password_hash=?, failed_attempts=0, locked_until=NULL WHERE id=?',
+               (_hash_password(new_pwd), uid))
+    db.commit()
+    return jsonify({'ok': True, 'message': f'账号 {row["username"]} 密码已重置'})
+
+@app.route('/api/admin/users/<int:uid>/status', methods=['PUT'])
+@require_super_admin
+def admin_toggle_user_status(uid):
+    """启用/禁用账号"""
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status not in ('active', 'disabled'):
+        return jsonify({'error': 'status 参数必须为 active 或 disabled'}), 400
+
+    db = get_db()
+    row = db.execute('SELECT username, role FROM admin_users WHERE id=?', (uid,)).fetchone()
+    if not row:
+        return jsonify({'error': '账号不存在'}), 404
+    if row['username'] == g.current_user:
+        return jsonify({'error': '不能修改自己的账号状态'}), 400
+
+    db.execute('UPDATE admin_users SET status=? WHERE id=?', (new_status, uid))
+    db.commit()
+    return jsonify({'ok': True, 'message': f'账号 {row["username"]} 已{("启用" if new_status == "active" else "禁用")}'})
+
+@app.route('/api/admin/users/<int:uid>', methods=['DELETE'])
+@require_super_admin
+def admin_delete_user(uid):
+    """删除账号"""
+    db = get_db()
+    row = db.execute('SELECT username, role FROM admin_users WHERE id=?', (uid,)).fetchone()
+    if not row:
+        return jsonify({'error': '账号不存在'}), 404
+    if row['username'] == g.current_user:
+        return jsonify({'error': '不能删除自己'}), 400
+    # 至少保留一个超级管理员
+    if row['role'] == 'super_admin':
+        count = db.execute("SELECT COUNT(*) as c FROM admin_users WHERE role='super_admin' AND status='active'").fetchone()['c']
+        if count <= 1:
+            return jsonify({'error': '至少保留一个超级管理员'}), 400
+
+    db.execute('DELETE FROM admin_users WHERE id=?', (uid,))
+    db.commit()
+    return jsonify({'ok': True, 'message': f'账号 {row["username"]} 已删除'})
+
+@app.route('/api/admin/login-logs', methods=['GET'])
+@require_super_admin
+def admin_list_login_logs():
+    """登录日志列表（默认最近 100 条）"""
+    limit = min(int(request.args.get('limit', 100)), 500)
+    db = get_db()
+    rows = db.execute(
+        'SELECT id, username, ip, user_agent, success, reason, created_at FROM login_logs ORDER BY id DESC LIMIT ?',
+        (limit,)
+    ).fetchall()
+    result = [dict(r) for r in rows]
+    return jsonify(result)
 
 # --- 产品 ---
 @app.route('/api/products', methods=['GET'])

@@ -45,23 +45,79 @@ export const api = {
   // --- 认证 ---
   auth: {
     async login(user: string, pass: string) {
-      const data = await request('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ user, pass }),
-      })
-      setToken(data.token)
-      return data
+      // 登录失败不抛错，需返回详细错误信息
+      try {
+        const res = await fetch(API_BASE + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user, pass }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          const err: any = new Error(data.error || `HTTP ${res.status}`)
+          err.status = res.status
+          err.locked = data.locked
+          err.remaining_minutes = data.remaining_minutes
+          err.remaining_attempts = data.remaining_attempts
+          throw err
+        }
+        setToken(data.token)
+        return data
+      } catch (err: any) {
+        throw err
+      }
     },
     async verify() {
       try {
-        await request('/auth/verify')
+        const data = await request('/auth/verify')
+        if (data && data.user) localStorage.setItem('admin_username', data.user)
+        if (data && data.role) localStorage.setItem('admin_role', data.role)
         return true
       } catch {
         return false
       }
     },
+    async changePassword(oldPassword: string, newPassword: string) {
+      return request('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+      })
+    },
     logout() {
       clearToken()
+    },
+  },
+
+  // --- 账号管理（超级管理员） ---
+  adminUsers: {
+    async list() {
+      return request('/admin/users')
+    },
+    async create(data: { username: string; password: string; role: string; remark?: string }) {
+      return request('/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
+    },
+    async resetPassword(id: number, password: string) {
+      return request(`/admin/users/${id}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password }),
+      })
+    },
+    async setStatus(id: number, status: 'active' | 'disabled') {
+      return request(`/admin/users/${id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      })
+    },
+    async remove(id: number) {
+      return request(`/admin/users/${id}`, {
+        method: 'DELETE',
+      })
+    },
+    async loginLogs(limit = 100) {
+      return request(`/admin/login-logs?limit=${limit}`)
     },
   },
 

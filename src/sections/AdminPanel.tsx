@@ -144,23 +144,32 @@ interface AdminPanelProps {
   onBack: () => void
 }
 
-type AdminTab = 'dashboard' | 'products' | 'news' | 'messages' | 'samples' | 'settings'
+type AdminTab = 'dashboard' | 'products' | 'news' | 'messages' | 'samples' | 'settings' | 'security'
 
 // ============ 登录页面 ============
 function LoginPage({ onLogin, onBack }: { onLogin: () => void; onBack: () => void }) {
   const [loginForm, setLoginForm] = useState({ user: '', pass: '' })
   const [error, setError] = useState('')
+  const [errorExtra, setErrorExtra] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setErrorExtra('')
     try {
-      await api.auth.login(loginForm.user, loginForm.pass)
+      const data = await api.auth.login(loginForm.user, loginForm.pass)
+      if (data.role) localStorage.setItem('admin_role', data.role)
+      if (data.user) localStorage.setItem('admin_username', data.user)
       onLogin()
     } catch (err: any) {
       setError(err.message || '登录失败')
+      if (err.locked && err.remaining_minutes) {
+        setErrorExtra(`账号已锁定，还需等待 ${err.remaining_minutes} 分钟`)
+      } else if (err.remaining_attempts !== undefined) {
+        setErrorExtra(`连续5次错误将锁定账号30分钟`)
+      }
     } finally {
       setLoading(false)
     }
@@ -194,7 +203,12 @@ function LoginPage({ onLogin, onBack }: { onLogin: () => void; onBack: () => voi
               onChange={e => setLoginForm(p => ({ ...p, pass: e.target.value }))}
             />
           </div>
-          {error && <div className="text-red-500 text-xs bg-red-50 p-2 rounded">{error}</div>}
+          {error && (
+            <div className="text-red-500 text-xs bg-red-50 p-2 rounded space-y-0.5">
+              <div>{error}</div>
+              {errorExtra && <div className="text-red-400">{errorExtra}</div>}
+            </div>
+          )}
           <button
             type="submit"
             disabled={loading}
@@ -220,6 +234,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [loginOk, setLoginOk] = useState(false)
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard')
   const [authChecked, setAuthChecked] = useState(false)
+  const [currentRole, setCurrentRole] = useState<string>('admin')
+  const [currentUsername, setCurrentUsername] = useState<string>('')
+  const toast = useToast()
 
   useEffect(() => {
     api.auth.verify().then(valid => {
@@ -227,6 +244,16 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       setAuthChecked(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (loginOk) {
+      // 登录成功后从 localStorage 读取用户信息
+      const role = localStorage.getItem('admin_role') || 'admin'
+      const username = localStorage.getItem('admin_username') || ''
+      setCurrentRole(role)
+      setCurrentUsername(username)
+    }
+  }, [loginOk])
 
   if (!authChecked) {
     return <div className="min-h-screen bg-gray-100 flex items-center justify-center text-gray-400">验证登录状态...</div>
@@ -243,6 +270,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     { key: 'messages', label: '留言管理', icon: '✉️' },
     { key: 'samples', label: '寄样申请', icon: '📦' },
     { key: 'settings', label: '渠道设置', icon: '⚙️' },
+    ...(currentRole === 'super_admin' ? [{ key: 'security' as AdminTab, label: '账号与安全', icon: '🛡️' }] : []),
   ]
 
   return (
@@ -252,6 +280,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         <div className="px-4 py-5 border-b border-white/10">
           <div className="text-white font-bold text-base">盛安密封</div>
           <div className="text-green-400 text-xs mt-0.5">管理后台 v2.0</div>
+          <div className="text-green-300 text-xs mt-2 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+            <span className="truncate">{currentUsername}</span>
+            {currentRole === 'super_admin' && <span className="text-yellow-300">（超管）</span>}
+          </div>
         </div>
         <nav className="flex-1 py-3">
           {tabs.map(tab => (
@@ -270,7 +303,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           ))}
         </nav>
         <button
-          onClick={() => { api.auth.logout(); onBack() }}
+          onClick={() => {
+            localStorage.removeItem('admin_role')
+            localStorage.removeItem('admin_username')
+            api.auth.logout()
+            onBack()
+          }}
           className="px-4 py-3 text-green-400 hover:text-white text-xs border-t border-white/10 flex items-center gap-2"
         >
           ← 退出登录
@@ -285,6 +323,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         {activeTab === 'messages' && <MessagesView />}
         {activeTab === 'samples' && <SamplesView />}
         {activeTab === 'settings' && <SettingsView />}
+        {activeTab === 'security' && <SecurityView currentUsername={currentUsername} toast={toast} />}
       </div>
     </div>
   )
@@ -1056,6 +1095,410 @@ function SettingsView() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ============ 账号与安全 ============
+function SecurityView({ currentUsername, toast }: { currentUsername: string; toast: ReturnType<typeof useToast> }) {
+  const [subTab, setSubTab] = useState<'users' | 'logs' | 'self'>('users')
+  const [users, setUsers] = useState<any[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  // 新增账号表单
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState({ username: '', password: '', role: 'admin', remark: '' })
+
+  // 重置密码表单
+  const [resetTarget, setResetTarget] = useState<any>(null)
+  const [newPwd, setNewPwd] = useState('')
+
+  // 修改自己的密码
+  const [selfPwd, setSelfPwd] = useState({ old: '', new: '' })
+
+  const loadUsers = useCallback(async () => {
+    try {
+      setLoading(true)
+      const list = await api.adminUsers.list()
+      setUsers(list)
+    } catch (e: any) {
+      toast.error(e.message || '加载账号列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
+
+  const loadLogs = useCallback(async () => {
+    try {
+      setLoading(true)
+      const list = await api.adminUsers.loginLogs(100)
+      setLogs(list)
+    } catch (e: any) {
+      toast.error(e.message || '加载登录日志失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    if (subTab === 'users') loadUsers()
+    if (subTab === 'logs') loadLogs()
+  }, [subTab, loadUsers, loadLogs])
+
+  const handleCreate = async () => {
+    if (!createForm.username || !createForm.password) {
+      toast.error('用户名和密码不能为空')
+      return
+    }
+    if (createForm.password.length < 6) {
+      toast.error('密码至少 6 位')
+      return
+    }
+    try {
+      await api.adminUsers.create(createForm)
+      toast.success(`账号 ${createForm.username} 创建成功`)
+      setShowCreate(false)
+      setCreateForm({ username: '', password: '', role: 'admin', remark: '' })
+      loadUsers()
+    } catch (e: any) {
+      toast.error(e.message || '创建失败')
+    }
+  }
+
+  const handleReset = async () => {
+    if (!newPwd || newPwd.length < 6) {
+      toast.error('新密码至少 6 位')
+      return
+    }
+    try {
+      await api.adminUsers.resetPassword(resetTarget.id, newPwd)
+      toast.success(`${resetTarget.username} 密码已重置`)
+      setResetTarget(null)
+      setNewPwd('')
+    } catch (e: any) {
+      toast.error(e.message || '重置失败')
+    }
+  }
+
+  const handleToggleStatus = async (u: any) => {
+    const newStatus = u.status === 'active' ? 'disabled' : 'active'
+    if (!confirm(`确定要${newStatus === 'active' ? '启用' : '禁用'}账号 ${u.username} 吗？`)) return
+    try {
+      await api.adminUsers.setStatus(u.id, newStatus)
+      toast.success(`账号已${newStatus === 'active' ? '启用' : '禁用'}`)
+      loadUsers()
+    } catch (e: any) {
+      toast.error(e.message || '操作失败')
+    }
+  }
+
+  const handleDelete = async (u: any) => {
+    if (!confirm(`确定删除账号 ${u.username} 吗？\n删除后无法恢复！`)) return
+    try {
+      await api.adminUsers.remove(u.id)
+      toast.success('账号已删除')
+      loadUsers()
+    } catch (e: any) {
+      toast.error(e.message || '删除失败')
+    }
+  }
+
+  const handleChangeSelfPwd = async () => {
+    if (!selfPwd.old || !selfPwd.new) {
+      toast.error('请填写原密码和新密码')
+      return
+    }
+    if (selfPwd.new.length < 6) {
+      toast.error('新密码至少 6 位')
+      return
+    }
+    try {
+      await api.auth.changePassword(selfPwd.old, selfPwd.new)
+      toast.success('密码修改成功，请下次登录使用新密码')
+      setSelfPwd({ old: '', new: '' })
+    } catch (e: any) {
+      toast.error(e.message || '修改失败')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 子标签 */}
+      <div className="flex items-center gap-2 border-b border-gray-200">
+        {[
+          { key: 'users' as const, label: '账号列表', icon: '👥' },
+          { key: 'logs' as const, label: '登录日志', icon: '📋' },
+          { key: 'self' as const, label: '我的密码', icon: '🔑' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setSubTab(t.key)}
+            className={`px-4 py-2 text-sm border-b-2 transition-colors ${
+              subTab === t.key
+                ? 'border-[#0F6637] text-[#0F6637] font-semibold'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <span className="mr-1">{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 账号列表 */}
+      {subTab === 'users' && (
+        <div className="bg-white rounded-lg shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">管理员账号列表</h2>
+              <p className="text-xs text-gray-500 mt-1">超级管理员可管理所有账号；至少保留一个超级管理员</p>
+            </div>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-4 py-2 bg-[#0F6637] text-white text-sm rounded-lg hover:bg-[#1a7a42]"
+            >
+              + 新增账号
+            </button>
+          </div>
+
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="px-3 py-2 text-left">账号</th>
+                <th className="px-3 py-2 text-left">角色</th>
+                <th className="px-3 py-2 text-left">状态</th>
+                <th className="px-3 py-2 text-left">最近登录</th>
+                <th className="px-3 py-2 text-left">登录IP</th>
+                <th className="px-3 py-2 text-left">备注</th>
+                <th className="px-3 py-2 text-left">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">加载中...</td></tr>
+              ) : users.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">暂无账号</td></tr>
+              ) : users.map(u => (
+                <tr key={u.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-2 font-medium">
+                    {u.username}
+                    {u.username === currentUsername && <span className="ml-2 text-xs text-yellow-600">（我）</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    {u.role === 'super_admin' ? (
+                      <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">超级管理员</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">普通管理员</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {u.status === 'active' ? (
+                      <span className="text-green-600 text-xs">● 启用</span>
+                    ) : (
+                      <span className="text-red-500 text-xs">● 禁用</span>
+                    )}
+                    {u.locked_until && (
+                      <div className="text-red-500 text-xs">🔒 锁定至 {u.locked_until}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{u.last_login_at || '从未登录'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{u.last_login_ip || '-'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{u.remark || '-'}</td>
+                  <td className="px-3 py-2 space-x-1">
+                    <button
+                      onClick={() => { setResetTarget(u); setNewPwd('') }}
+                      className="text-xs text-blue-600 hover:underline"
+                    >改密</button>
+                    {u.username !== currentUsername && (
+                      <>
+                        <button
+                          onClick={() => handleToggleStatus(u)}
+                          className={`text-xs hover:underline ${u.status === 'active' ? 'text-orange-600' : 'text-green-600'}`}
+                        >
+                          {u.status === 'active' ? '禁用' : '启用'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u)}
+                          className="text-xs text-red-600 hover:underline"
+                        >删除</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 登录日志 */}
+      {subTab === 'logs' && (
+        <div className="bg-white rounded-lg shadow-sm p-5">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-gray-800">登录日志（最近 100 条）</h2>
+            <p className="text-xs text-gray-500 mt-1">包含所有登录尝试的账号、IP、时间和结果</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="px-3 py-2 text-left">时间</th>
+                <th className="px-3 py-2 text-left">账号</th>
+                <th className="px-3 py-2 text-left">IP</th>
+                <th className="px-3 py-2 text-left">结果</th>
+                <th className="px-3 py-2 text-left">原因</th>
+                <th className="px-3 py-2 text-left">UA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">加载中...</td></tr>
+              ) : logs.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">暂无日志</td></tr>
+              ) : logs.map((l: any) => (
+                <tr key={l.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{l.created_at}</td>
+                  <td className="px-3 py-2">{l.username}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{l.ip || '-'}</td>
+                  <td className="px-3 py-2">
+                    {l.success === 1 ? (
+                      <span className="text-green-600 text-xs">✓ 成功</span>
+                    ) : (
+                      <span className="text-red-500 text-xs">✗ 失败</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{l.reason || '-'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-400 truncate max-w-xs" title={l.user_agent}>{l.user_agent || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 修改自己的密码 */}
+      {subTab === 'self' && (
+        <div className="bg-white rounded-lg shadow-sm p-5 max-w-md">
+          <h2 className="text-lg font-bold text-gray-800 mb-1">修改我的密码</h2>
+          <p className="text-xs text-gray-500 mb-4">当前账号：<span className="font-semibold">{currentUsername}</span></p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">原密码</label>
+              <input
+                type="password"
+                className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                value={selfPwd.old}
+                onChange={e => setSelfPwd(p => ({ ...p, old: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">新密码（至少 6 位）</label>
+              <input
+                type="password"
+                className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                value={selfPwd.new}
+                onChange={e => setSelfPwd(p => ({ ...p, new: e.target.value }))}
+              />
+            </div>
+            <button
+              onClick={handleChangeSelfPwd}
+              className="w-full bg-[#0F6637] text-white py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42]"
+            >
+              修改密码
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 新增账号弹窗 */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold mb-4">新增管理员账号</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">用户名（2-32 字符）</label>
+                <input
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  value={createForm.username}
+                  onChange={e => setCreateForm(p => ({ ...p, username: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">初始密码（至少 6 位）</label>
+                <input
+                  type="password"
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  value={createForm.password}
+                  onChange={e => setCreateForm(p => ({ ...p, password: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">角色</label>
+                <select
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  value={createForm.role}
+                  onChange={e => setCreateForm(p => ({ ...p, role: e.target.value }))}
+                >
+                  <option value="admin">普通管理员（仅业务功能）</option>
+                  <option value="super_admin">超级管理员（账号管理权限）</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">备注（可选）</label>
+                <input
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  placeholder="如：业务员小王"
+                  value={createForm.remark}
+                  onChange={e => setCreateForm(p => ({ ...p, remark: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm"
+              >取消</button>
+              <button
+                onClick={handleCreate}
+                className="flex-1 px-4 py-2 bg-[#0F6637] text-white rounded text-sm font-semibold"
+              >确认创建</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重置密码弹窗 */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold mb-4">重置密码</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              账号：<span className="font-semibold">{resetTarget.username}</span>
+            </p>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">新密码（至少 6 位）</label>
+              <input
+                type="password"
+                className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                value={newPwd}
+                onChange={e => setNewPwd(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => { setResetTarget(null); setNewPwd('') }}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm"
+              >取消</button>
+              <button
+                onClick={handleReset}
+                className="flex-1 px-4 py-2 bg-[#0F6637] text-white rounded text-sm font-semibold"
+              >确认重置</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ToastView msgs={toast.msgs} />
     </div>
   )
 }
