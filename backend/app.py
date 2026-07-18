@@ -458,7 +458,7 @@ def upload_image():
     if not files or files[0].filename == '':
         return jsonify({'error': '文件为空'}), 400
     
-    upload_dir = os.path.join(STATIC_DIST, 'images', 'products')
+    upload_dir = os.path.join(os.path.dirname(BASE_DIR), 'images', 'products')
     os.makedirs(upload_dir, exist_ok=True)
     
     uploaded = []

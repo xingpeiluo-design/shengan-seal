@@ -77,7 +77,7 @@ export default function Header({ onSampleClick }: HeaderProps) {
             </div>
             <div>
               <div className="text-white text-xl font-bold tracking-wider">盛安密封</div>
-              <div className="text-green-200 text-[10px] tracking-widest uppercase">Manufacturer of high-end wrap-around sealing strips</div>
+              <div className="text-green-200 text-[9px] md:text-[10px] tracking-widest uppercase hidden sm:block leading-tight">Manufacturer of high-end wrap-around sealing strips</div>
             </div>
           </Link>
 

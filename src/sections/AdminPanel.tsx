@@ -447,14 +447,20 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
   const [uploading, setUploading] = useState(false)
 
   // 上传图片（单张/多张）
+  const MAX_SIZE = 20 * 1024 * 1024 // 20MB
   const handleUpload = async (files: FileList, target: 'image_url' | 'gallery_images' | 'detail_images') => {
     if (!files.length) return
+    const oversized = Array.from(files).filter(f => f.size > MAX_SIZE)
+    if (oversized.length) {
+      alert(`以下文件超过 20MB，请压缩后再上传：\n${oversized.map(f => `${f.name}（${(f.size / 1024 / 1024).toFixed(1)}MB）`).join('\n')}`)
+      return
+    }
     setUploading(true)
     try {
       const fileArr = Array.from(files)
       if (target === 'image_url') {
         const res = await api.admin.uploadImage(fileArr[0])
-        setForm(p => ({ ...p, image_url: res.url }))
+        setForm(p => ({ ...p, image_url: res.urls?.[0] || res.url }))
       } else {
         const res = await api.admin.uploadImages(fileArr)
         const newUrls: string[] = res.urls || [res.url]
@@ -545,6 +551,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
           {/* 主图 */}
           <div className="mb-4">
             <label className="text-xs font-semibold text-gray-600 mb-1 block">产品主图（列表封面）</label>
+            <div className="text-xs text-gray-400 mb-2">支持 JPG / PNG / WebP / GIF 格式，单张不超过 20MB</div>
             <div className="flex items-start gap-3">
               {form.image_url && (
                 <div className="w-24 h-24 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0">
@@ -553,7 +560,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
               )}
               <label className="cursor-pointer bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-500 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
                 {uploading ? '上传中...' : '点击上传主图'}
-                <input type="file" accept="image/*" className="hidden"
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
                   onChange={e => handleUpload(e.target.files!, 'image_url')} disabled={uploading} />
               </label>
             </div>
@@ -564,6 +571,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
           {/* 轮播图 */}
           <div className="mb-4">
             <label className="text-xs font-semibold text-gray-600 mb-1 block">轮播主图（详情页画廊，可多选）</label>
+            <div className="text-xs text-gray-400 mb-2">支持 JPG / PNG / WebP / GIF 格式，单张不超过 20MB</div>
             <div className="flex flex-wrap gap-2 mb-2">
               {form.gallery_images.map((img, i) => (
                 <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 group">
@@ -576,7 +584,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
               ))}
               <label className="cursor-pointer w-20 h-20 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
                 {uploading ? '...' : '+添加'}
-                <input type="file" accept="image/*" multiple className="hidden"
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden"
                   onChange={e => handleUpload(e.target.files!, 'gallery_images')} disabled={uploading} />
               </label>
             </div>
@@ -586,6 +594,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
           {/* 详情图 */}
           <div>
             <label className="text-xs font-semibold text-gray-600 mb-1 block">详情长图（产品详情区展示，可多选）</label>
+            <div className="text-xs text-gray-400 mb-2">支持 JPG / PNG / WebP / GIF 格式，单张不超过 20MB</div>
             <div className="flex flex-wrap gap-2 mb-2">
               {form.detail_images.map((img, i) => (
                 <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 group">
@@ -598,7 +607,7 @@ function ProductForm({ initial, onSave, onCancel }: { initial: any; onSave: (dat
               ))}
               <label className="cursor-pointer w-20 h-20 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
                 {uploading ? '...' : '+添加'}
-                <input type="file" accept="image/*" multiple className="hidden"
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden"
                   onChange={e => handleUpload(e.target.files!, 'detail_images')} disabled={uploading} />
               </label>
             </div>

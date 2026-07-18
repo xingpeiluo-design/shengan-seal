@@ -85,31 +85,33 @@ export default function ProductCenter({ onSampleClick }: ProductCenterProps) {
                 </span>
               </div>
 
-              {/* 产品图示区 */}
-              <div className="px-5 pt-4">
-                <div className="rounded-lg h-48 flex items-center justify-center relative overflow-hidden bg-gray-100">
-                  {prod.image_url ? (
-                    <img
-                      src={prod.image_url}
-                      alt={prod.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <svg viewBox="0 0 300 150" className="w-full h-full">
-                      <rect width="300" height="150" fill="#1a2a1a"/>
-                      <rect x="30" y="30" width="240" height="28" rx="14" fill="#e8f5ec" opacity="0.9"/>
-                      <rect x="30" y="62" width="240" height="36" rx="4" fill="#b3d9c4" opacity="0.85"/>
-                      <rect x="45" y="102" width="210" height="16" rx="3" fill="#7ecfa0" opacity="0.8"/>
-                      <rect x="30" y="120" width="240" height="12" rx="2" fill="#ffeb9c" opacity="0.9"/>
-                      <text x="150" y="52" textAnchor="middle" fontSize="11" fill="#0a3d1f" fontWeight="bold">PE保护膜</text>
-                      <text x="150" y="84" textAnchor="middle" fontSize="11" fill="#0a3d1f" fontWeight="bold">PU热固性内芯</text>
-                      <text x="150" y="114" textAnchor="middle" fontSize="10" fill="#0a3d1f">PP骨架层</text>
-                      <text x="150" y="131" textAnchor="middle" fontSize="9" fill="#8b6914">包覆式密封条结构</text>
-                    </svg>
-                  )}
+              {/* 产品图示区 - 点击跳转详情页 */}
+              <Link to={`/products/${prod.id}`} className="block">
+                <div className="px-5 pt-4">
+                  <div className="rounded-lg h-48 flex items-center justify-center relative overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition-opacity">
+                    {prod.image_url ? (
+                      <img
+                        src={prod.image_url}
+                        alt={prod.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <svg viewBox="0 0 300 150" className="w-full h-full">
+                        <rect width="300" height="150" fill="#1a2a1a"/>
+                        <rect x="30" y="30" width="240" height="28" rx="14" fill="#e8f5ec" opacity="0.9"/>
+                        <rect x="30" y="62" width="240" height="36" rx="4" fill="#b3d9c4" opacity="0.85"/>
+                        <rect x="45" y="102" width="210" height="16" rx="3" fill="#7ecfa0" opacity="0.8"/>
+                        <rect x="30" y="120" width="240" height="12" rx="2" fill="#ffeb9c" opacity="0.9"/>
+                        <text x="150" y="52" textAnchor="middle" fontSize="11" fill="#0a3d1f" fontWeight="bold">PE保护膜</text>
+                        <text x="150" y="84" textAnchor="middle" fontSize="11" fill="#0a3d1f" fontWeight="bold">PU热固性内芯</text>
+                        <text x="150" y="114" textAnchor="middle" fontSize="10" fill="#0a3d1f">PP骨架层</text>
+                        <text x="150" y="131" textAnchor="middle" fontSize="9" fill="#8b6914">包覆式密封条结构</text>
+                      </svg>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </Link>
 
               {/* 产品信息 */}
               <div className="p-5">
