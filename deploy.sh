@@ -7,12 +7,25 @@
 set -e
 
 # ============ 配置区（按需修改） ============
-DOMAIN=""            # 域名（可选，留空则用 IP）
-PORT=8082            # nginx 监听端口
+DOMAIN=""            # 域名（可选，留空则用 IP 访问）
+PORT=8082            # nginx 监听端口（HTTP）
 BACKEND_PORT=5000    # Flask/gunicorn 端口
 APP_DIR="/var/www/shengan-seal"
 PYTHON_BIN="python3"
 NODE_BIN="node"
+
+# 站点绝对 URL（用于 sitemap / robots / canonical 等 SEO 元素）
+# 部署到客户独立域名时必须修改为客户的域名（如 https://shengan.example.com/）
+# 部署到主站子路径时设为子路径完整 URL（如 https://www.maichewei.com/shengan/）
+# 默认值适配当前生产环境；部署时建议通过环境变量覆盖：
+#   SITE_URL=https://shengan.example.com/ bash deploy.sh
+SITE_URL="${SITE_URL:-https://www.maichewei.com/shengan/}"
+
+# HTTPS 开关：true 时在 80 端口加 301 跳转 + 443 端口配置（需已申请 SSL 证书）
+# 首次部署建议先 false，跑通后再单独配置 HTTPS（参考 DEPLOY.md 第 4 节）
+ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
+SSL_CERT_PATH="/etc/nginx/ssl/shengan.crt"      # 自定义证书路径
+SSL_KEY_PATH="/etc/nginx/ssl/shengan.key"
 
 # ============ 颜色输出 ============
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -158,6 +171,21 @@ info "数据库就绪"
 info "构建前端..."
 if [ -f "package.json" ]; then
     npm install --silent 2>/dev/null
+
+    # 根据 SITE_URL 推导 base path
+    #   https://example.com/         -> base=/
+    #   https://example.com/shengan/ -> base=/shengan/
+    BASE_PATH=$(echo "$SITE_URL" | sed -E 's|^https?://[^/]+||')
+    [ -z "$BASE_PATH" ] && BASE_PATH="/"
+    # 保证首尾斜杠
+    [[ "$BASE_PATH" != */ ]] && BASE_PATH="$BASE_PATH/"
+    [[ "$BASE_PATH" != /* ]] && BASE_PATH="/$BASE_PATH"
+
+    cat > .env.production << ENVEOF
+VITE_BASE_PATH=$BASE_PATH
+VITE_SITE_URL=$SITE_URL
+ENVEOF
+    info "已生成 .env.production (VITE_BASE_PATH=$BASE_PATH)"
     npm run build 2>/dev/null
     info "前端构建完成"
 else
@@ -182,6 +210,7 @@ After=network.target
 User=root
 WorkingDirectory=$APP_DIR/backend
 Environment="PATH=$(pwd)/backend/venv/bin"
+Environment="SHENGAN_SITE_URL=$SITE_URL"
 ExecStart=$(pwd)/backend/venv/bin/gunicorn -w 4 -b 127.0.0.1:$BACKEND_PORT app:app
 Restart=always
 RestartSec=3
@@ -200,12 +229,41 @@ NGINX_CONF="/etc/nginx/sites-available/shengan-seal"
 NGINX_LINK="/etc/nginx/sites-enabled/shengan-seal"
 
 cat > "$NGINX_CONF" << EOF
+# HTTP server（无论 HTTPS 是否启用，HTTP 都保留作为后端配置入口）
 server {
     listen $PORT;
-    server_name _;
+    server_name $DOMAIN _;
 
     root $APP_DIR/dist;
     index index.html;
+EOF
+
+# HTTPS 配置块（独立 server）
+if [ "$ENABLE_HTTPS" = "true" ]; then
+cat >> "$NGINX_CONF" << EOF
+
+    # HTTP → HTTPS 301 跳转
+    return 301 https://\$host\$request_uri;
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    server_name $DOMAIN _;
+
+    ssl_certificate     $SSL_CERT_PATH;
+    ssl_certificate_key $SSL_KEY_PATH;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    root $APP_DIR/dist;
+    index index.html;
+EOF
+fi
+
+cat >> "$NGINX_CONF" << EOF
 
     # API 反向代理到 Flask 后端
     location /api/ {
@@ -261,12 +319,21 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  盛安密封官网部署完成！${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "  前端地址: http://$(hostname -I | awk '{print $1}'):$PORT"
-echo "  管理后台: http://$(hostname -I | awk '{print $1}'):$PORT/#/admin"
-echo "  默认账号: admin / shengan2026"
+PROTOCOL="http"
+[ "$ENABLE_HTTPS" = "true" ] && PROTOCOL="https"
+HOST=$(hostname -I | awk '{print $1}')
+[ -n "$DOMAIN" ] && HOST="$DOMAIN"
+echo "  SITE_URL:      $SITE_URL"
+echo "  访问地址:      $PROTOCOL://$HOST"
+echo "  管理后台:      $PROTOCOL://$HOST/#/admin"
+echo "  默认账号:      admin / shengan2026"
 echo ""
 echo "  服务管理:"
 echo "    systemctl status shengan-seal   # 查看后端状态"
-echo "    systemctl restart shengan-seal  # 重启后端"
-echo "    systemctl reload nginx          # 重载前端"
+echo "    systemctl restart shengan-seal  # 重启后端（修改后端代码后必走）"
+echo "    systemctl reload nginx          # 重载前端（修改 nginx 配置后）"
+echo "    bash $APP_DIR/deploy.sh         # 重新执行一键部署（包含重建前端）"
+echo ""
+[ "$ENABLE_HTTPS" = "false" ] && echo -e "${YELLOW}  提示: 当前为 HTTP 模式。生产环境建议启用 HTTPS：${NC}"
+[ "$ENABLE_HTTPS" = "false" ] && echo -e "${YELLOW}    ENABLE_HTTPS=true bash deploy.sh  # 需先准备好 SSL 证书${NC}"
 echo ""
