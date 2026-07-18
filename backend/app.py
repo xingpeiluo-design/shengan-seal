@@ -26,6 +26,12 @@ IMAGES_DIR = os.path.join(os.path.dirname(BASE_DIR), 'images')
 ADMIN_USER = 'admin'
 ADMIN_PASS_HASH = hashlib.sha256('shengan2026'.encode()).hexdigest()
 
+# --- 站点 URL（用于 sitemap、robots.txt、SEO 等） ---
+# 优先级：环境变量 > 默认值（当前生产地址）
+# 部署到客户独立域名时，设置环境变量 SHENGAN_SITE_URL 为该域名（如 https://shengan.example.com）
+# 注意：尾部带 / （sitemap 内拼接 URL 需要）
+SITE_URL = os.environ.get('SHENGAN_SITE_URL', 'https://www.maichewei.com/shengan/')
+
 # --- SECRET_KEY 持久化 ---
 # 优先级：环境变量 > 持久化文件 > 首次启动生成
 _SECRET_KEY_FILE = os.path.join(BASE_DIR, '.secret_key')
@@ -700,7 +706,7 @@ def sitemap_xml():
     ).fetchall()
     news = db.execute("SELECT id, created_at, title FROM news ORDER BY id DESC LIMIT 50").fetchall()
 
-    base = 'https://www.maichewei.com/shengan/'
+    base = SITE_URL
     today = datetime.now().strftime('%Y-%m-%d')
     lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
@@ -756,7 +762,7 @@ def robots_txt():
         'Allow: /\n'
         'Disallow: /admin\n'  # hash 路由本不会被抓，取个保险
         '\n'
-        f'Sitemap: https://www.maichewei.com/shengan/sitemap.xml\n'
+        f'Sitemap: {SITE_URL}sitemap.xml\n'
     )
     return Response(content, mimetype='text/plain; charset=utf-8')
 
