@@ -33,6 +33,8 @@ export default function ProductList() {
     api.products.list().then(data => {
       setProducts(data)
       setLoading(false)
+      // SEO: 动态 title
+      document.title = `产品中心 - 共 ${data.length} 款产品 - 盛安密封`
     }).catch(() => setLoading(false))
   }, [])
 

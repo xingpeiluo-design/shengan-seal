@@ -42,6 +42,12 @@ export default function ProductDetail() {
       api.products.detail(parseInt(id)).then(data => {
         setProduct(data)
         setLoading(false)
+        // SEO: 动态 title + description
+        document.title = `${data.name} - 盛安密封`
+        const desc = document.querySelector('meta[name="description"]')
+        if (desc) {
+          desc.setAttribute('content', `${data.name} - ${data.description?.slice(0, 100) || '盛安密封专业密封条产品'}`)
+        }
       }).catch(() => setLoading(false))
     }
   }, [id])

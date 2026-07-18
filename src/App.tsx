@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import Header from './sections/Header'
 import TopBanner from './sections/TopBanner'
 import BannerCarousel from './sections/BannerCarousel'
@@ -46,32 +46,42 @@ function HomePage() {
       {showSampleModal && <SampleModal onClose={() => setShowSampleModal(false)} />}
       {showQRModal && <QRModal type={showQRModal} onClose={() => setShowQRModal(null)} />}
       {/* 管理入口：仅双击左下角触发，平时完全不可见 */}
-      <a
-        href="#/admin"
-        className="fixed bottom-0 left-0 w-3 h-3 opacity-0 cursor-default"
-        style={{ zIndex: 999 }}
-        onDoubleClick={() => { window.location.hash = '#/admin' }}
-        title=""
-      />
+      <AdminEntry />
     </div>
+  )
+}
+
+// 管理入口入口点（仅双击左下角触发）
+function AdminEntry() {
+  const navigate = useNavigate()
+  return (
+    <a
+      href="/admin"
+      onClick={(e) => { e.preventDefault(); navigate('/admin') }}
+      onDoubleClick={(e) => { e.preventDefault(); navigate('/admin') }}
+      className="fixed bottom-0 left-0 w-3 h-3 opacity-0 cursor-default"
+      style={{ zIndex: 999 }}
+      title=""
+    />
   )
 }
 
 // 管理后台（独立路由）
 function AdminRoute() {
-  return <AdminPanel onBack={() => { window.location.hash = '#/' }} />
+  const navigate = useNavigate()
+  return <AdminPanel onBack={() => navigate('/')} />
 }
 
 function App() {
   return (
-    <HashRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/products" element={<ProductList />} />
         <Route path="/products/:id" element={<ProductDetail />} />
         <Route path="/admin" element={<AdminRoute />} />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   )
 }
 
