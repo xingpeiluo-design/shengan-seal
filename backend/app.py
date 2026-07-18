@@ -684,6 +684,82 @@ def get_products():
         result.append(item)
     return jsonify(result)
 
+@app.route('/api/sitemap.xml', methods=['GET'])
+def sitemap_xml():
+    """动态生成 sitemap.xml·产品页 + 静态页
+
+    说明：产品详情页是 SPA hash 路由（#/products/<id>），hash 部分
+    不会被搜索引擎抓取。本 sitemap 主要价值：
+    1. 让百度/Google 知道子站存在并定期访问首页
+    2. 未来若改为 BrowserRouter 或 SSR，sitemap 立即生效
+    """
+    from flask import Response
+    db = get_db()
+    products = db.execute(
+        'SELECT id, updated_at, name FROM products WHERE status="上架" AND is_test=0 ORDER BY sort_order, id'
+    ).fetchall()
+    news = db.execute("SELECT id, created_at, title FROM news ORDER BY id DESC LIMIT 50").fetchall()
+
+    base = 'https://www.maichewei.com/shengan/'
+    today = datetime.now().strftime('%Y-%m-%d')
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    # 首页
+    lines.append('  <url>')
+    lines.append(f'    <loc>{base}</loc>')
+    lines.append(f'    <lastmod>{today}</lastmod>')
+    lines.append('    <changefreq>weekly</changefreq>')
+    lines.append('    <priority>1.0</priority>')
+    lines.append('  </url>')
+    # 产品中心页
+    lines.append('  <url>')
+    lines.append(f'    <loc>{base}#/products</loc>')
+    lines.append(f'    <lastmod>{today}</lastmod>')
+    lines.append('    <changefreq>weekly</changefreq>')
+    lines.append('    <priority>0.9</priority>')
+    lines.append('  </url>')
+    # 行业资讯页
+    lines.append('  <url>')
+    lines.append(f'    <loc>{base}#/news</loc>')
+    lines.append(f'    <lastmod>{today}</lastmod>')
+    lines.append('    <changefreq>daily</changefreq>')
+    lines.append('    <priority>0.7</priority>')
+    lines.append('  </url>')
+    # 产品详情页
+    for p in products:
+        lastmod = (p['updated_at'] or today)[:10]
+        lines.append('  <url>')
+        lines.append(f'    <loc>{base}#/products/{p["id"]}</loc>')
+        lines.append(f'    <lastmod>{lastmod}</lastmod>')
+        lines.append('    <changefreq>monthly</changefreq>')
+        lines.append('    <priority>0.8</priority>')
+        lines.append('  </url>')
+    # 行业资讯详情
+    for n in news:
+        lastmod = (n['created_at'] or today)[:10]
+        lines.append('  <url>')
+        lines.append(f'    <loc>{base}#/news/{n["id"]}</loc>')
+        lines.append(f'    <lastmod>{lastmod}</lastmod>')
+        lines.append('    <changefreq>monthly</changefreq>')
+        lines.append('    <priority>0.6</priority>')
+        lines.append('  </url>')
+    lines.append('</urlset>')
+    xml = '\n'.join(lines)
+    return Response(xml, mimetype='application/xml; charset=utf-8')
+
+@app.route('/api/robots.txt', methods=['GET'])
+def robots_txt():
+    """shengan 子站自己的 robots.txt"""
+    from flask import Response
+    content = (
+        'User-agent: *\n'
+        'Allow: /\n'
+        'Disallow: /admin\n'  # hash 路由本不会被抓，取个保险
+        '\n'
+        f'Sitemap: https://www.maichewei.com/shengan/sitemap.xml\n'
+    )
+    return Response(content, mimetype='text/plain; charset=utf-8')
+
 @app.route('/api/admin/products', methods=['GET'])
 @require_auth
 def admin_get_products():
