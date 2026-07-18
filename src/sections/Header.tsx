@@ -73,7 +73,7 @@ export default function Header({ onSampleClick }: HeaderProps) {
           {/* Logo区 */}
           <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center bg-white/10">
-              <img src="images/store_logo.webp" alt="盛安密封" className="w-full h-full object-cover" />
+              <img src="/images/store_logo.webp" alt="盛安密封" className="w-full h-full object-cover" />
             </div>
             <div>
               <div className="text-white text-xl font-bold tracking-wider">盛安密封</div>

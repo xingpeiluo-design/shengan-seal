@@ -3,7 +3,21 @@
  * 统一管理所有后端 API 调用
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+// API 基础路径：拼接 BASE_URL 和 /api
+// BASE_URL 来源于 Vite 的 base 配置（构建时注入到 import.meta.env.BASE_URL）
+//   · 根部署（推荐·客户 VPS 默认）：BASE_URL=/          → API_BASE=/api
+//   · 子路径部署：                  BASE_URL=/shengan/  → API_BASE=/shengan/api
+//
+// ⚠️ 重要：必须拼 BASE_URL，因为 fetch() 不受 HTML <base href> 影响
+//   JS fetch('/api/products') 会请求 https://domain.com/api/products（不是子路径下的）
+//   拼接 BASE_URL 才能请求 https://domain.com/shengan/api/products
+function getApiBase(): string {
+  const base = import.meta.env.BASE_URL || '/'
+  const normalized = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${normalized || ''}/api`
+}
+// 优先使用环境变量 VITE_API_BASE（客户可手动覆盖），否则自动拼接 BASE_URL
+const API_BASE = (import.meta.env.VITE_API_BASE || getApiBase()).replace(/\/+$/, '')
 
 // 获取存储的 token
 function getToken(): string | null {

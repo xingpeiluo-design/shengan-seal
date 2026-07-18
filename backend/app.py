@@ -27,10 +27,11 @@ ADMIN_USER = 'admin'
 ADMIN_PASS_HASH = hashlib.sha256('shengan2026'.encode()).hexdigest()
 
 # --- 站点 URL（用于 sitemap、robots.txt、SEO 等） ---
-# 优先级：环境变量 > 默认值（当前生产地址）
-# 部署到客户独立域名时，设置环境变量 SHENGAN_SITE_URL 为该域名（如 https://shengan.example.com）
-# 注意：尾部带 / （sitemap 内拼接 URL 需要）
-SITE_URL = os.environ.get('SHENGAN_SITE_URL', 'https://www.maichewei.com/shengan/')
+# 售卖标准：自动从请求头推断，避免硬编码客户域名/IP
+#   1. 环境变量 SHENGAN_SITE_URL（如需强制指定）
+#   2. 请求的 Host 头 + X-Forwarded-Proto（nginx 反代后的真实地址）
+# 这样客户部署到任意域名/IP，sitemap/robots 都自动指向正确的地址
+SITE_URL = os.environ.get('SHENGAN_SITE_URL', '').rstrip('/')  # 为空时运行时动态推断
 
 # --- SECRET_KEY 持久化 ---
 # 优先级：环境变量 > 持久化文件 > 首次启动生成
@@ -690,6 +691,17 @@ def get_products():
         result.append(item)
     return jsonify(result)
 
+def _infer_site_url():
+    """从请求头动态推断站点 URL（售卖标准：零配置适配任何部署环境）
+    优先级：环境变量 SHENGAN_SITE_URL > 请求的 Host+X-Forwarded-Proto
+    """
+    if SITE_URL:
+        return SITE_URL
+    # nginx 反代后 X-Forwarded-Proto 会被设置，否则默认 https
+    proto = request.headers.get('X-Forwarded-Proto', 'https')
+    host = request.headers.get('X-Forwarded-Host') or request.host
+    return f'{proto}://{host}'
+
 @app.route('/api/sitemap.xml', methods=['GET'])
 def sitemap_xml():
     """动态生成 sitemap.xml·产品页 + 静态页
@@ -706,7 +718,7 @@ def sitemap_xml():
     ).fetchall()
     news = db.execute("SELECT id, created_at, title FROM news ORDER BY id DESC LIMIT 50").fetchall()
 
-    base = SITE_URL
+    base = _infer_site_url()
     today = datetime.now().strftime('%Y-%m-%d')
     lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
@@ -755,14 +767,15 @@ def sitemap_xml():
 
 @app.route('/api/robots.txt', methods=['GET'])
 def robots_txt():
-    """shengan 子站自己的 robots.txt"""
+    """动态 robots.txt：站点 URL 从请求头推断（零配置适配任何域名）"""
     from flask import Response
+    base = _infer_site_url()
     content = (
         'User-agent: *\n'
         'Allow: /\n'
         'Disallow: /admin\n'  # hash 路由本不会被抓，取个保险
         '\n'
-        f'Sitemap: {SITE_URL}sitemap.xml\n'
+        f'Sitemap: {base}/sitemap.xml\n'
     )
     return Response(content, mimetype='text/plain; charset=utf-8')
 

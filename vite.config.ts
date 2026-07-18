@@ -2,48 +2,33 @@ import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
 
-// https://vite.dev/config/
+// ============================================================
+// 盛安密封官网 · Vite 配置
+// ============================================================
 //
-// 部署适配（两个核心变量）：
-//   VITE_BASE_PATH  HTML 中 <base href> 和静态资源前缀
-//                   · /            → 独立域名根部署（推荐用于客户 VPS）
-//                   · /shengan/    → 主站子路径部署（当前生产环境）
-//                   · /任意子路径/ → 其他子路径场景
+// 售卖标准（最简方案 A）：
+//   所有静态资源统一使用【根相对路径 /】
+//   · <img src="/images/xxx">      → 客户部署到任意域名/IP 都自动适配
+//   · fetch('/api/products')        → 走根路径，客户无需修改
+//   · 客户只需：解析域名 + 配置 SSL + 重启服务
 //
-//   VITE_SITE_URL  站点绝对 URL（用于 canonical、og:url、JSON-LD）
-//                   注意：这个值会原样写入 HTML 的 <link>/<meta>，**不需要**带尾斜杠以外的差异
-//                   · 默认 https://www.maichewei.com/shengan/
-//                   · 客户域名部署时改为 https://shengan.example.com/（不带子路径）
+// 关于 base：
+//   默认 base='/'（根部署·推荐）
+//   如果客户必须部署到子路径（如 https://主站.com/shengan/）：
+//     在 .env.production 设置 VITE_BASE_PATH=/shengan/
+//     同时配置 nginx location 反代 + fetch 路径会自动加上 /shengan 前缀
 //
-// 部署到客户独立域名的工作流：
-//   1. .env.production 里 VITE_BASE_PATH=/  + VITE_SITE_URL=https://shengan.example.com/
-//   2. 后端服务环境变量 SHENGAN_SITE_URL=https://shengan.example.com/
-//   3. 重新 build 前端 + 重启后端
-//   4. nginx 配置客户域名解析到 8082 即可
+// 关于 SEO 绝对 URL（canonical / og:url / JSON-LD logo）：
+//   这些不影响资源加载，部署到独立域名后由【管理后台→系统设置】填入站点 URL 即可
+//   不再硬编码在源码中（卖源码标准：不要把客户域名/IP 写死在代码里）
+//
 export default defineConfig(({ mode }) => {
-  // build 时根据当前 mode 加载对应的 .env 文件
   const env = loadEnv(mode, process.cwd(), '')
   const base = env.VITE_BASE_PATH || '/'
-  // SITE_URL 默认值与后端保持一致
-  const siteUrl = env.VITE_SITE_URL || 'https://www.maichewei.com/shengan/'
+
   return {
     base,
-    plugins: [
-      react(),
-      {
-        name: 'inject-html-vars',
-        transformIndexHtml: {
-          order: 'pre',
-          handler(html) {
-            return html
-              // 注入 <base href>（Vite 本身不自动做这件事）
-              .replace('<head>', `<head>\n    <base href="${base}" />`)
-              // 替换 SEO 相关的占位符为站点绝对 URL
-              .replace(/__SITE_URL__/g, siteUrl)
-          },
-        },
-      },
-    ],
+    plugins: [react()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

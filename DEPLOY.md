@@ -1,400 +1,339 @@
 # 盛安密封官网 · 客户交付部署手册
 
-> 本文档用于将本项目交付到客户服务器并完成生产部署。
-> 预计完整部署耗时：**15-30 分钟**（含 HTTPS 证书申请）。
+> **本程序零配置适配任意域名/IP** —— 客户拿到源码后只需 3 步即可上线：
+> 1. 解析域名到服务器 IP
+> 2. 执行 `bash deploy.sh`
+> 3. 申请 SSL 证书
 
 ---
 
-## 目录
+## 🚀 零、5 分钟快速部署（小白图文版）
 
-1. [系统要求](#1-系统要求)
-2. [三种部署场景速查](#2-三种部署场景速查)
-3. [一键部署步骤](#3-一键部署步骤)
-4. [HTTPS 配置（推荐）](#4-https-配置推荐)
-5. [升级部署](#5-升级部署)
-6. [服务管理与运维](#6-服务管理与运维)
-7. [常见问题](#7-常见问题)
-8. [关键路径与凭证](#8-关键路径与凭证)
+> 🎯 **只看这一节就够了**。下面 5 步复制粘贴即可，不懂原理也能跑通。
+>
+> 👉 **看得懂下面？跳过第二节往下翻** —— 后面有完整 220 行技术细节。
 
----
+### 🛒 第 1 步：准备一台服务器
 
-## 1. 系统要求
+| 项目 | 要求 |
+|------|------|
+| 配置 | 2 核 CPU / 2G 内存 / 40G 硬盘 起 |
+| 系统 | CentOS 7+ / Ubuntu 18+ / Debian 10+ |
+| 必备 | 服务器已装【宝塔面板】（推荐 7.7+）|
 
-| 项目 | 最低 | 推荐 |
-|------|------|------|
-| OS | Ubuntu 20.04 / Debian 11 | Ubuntu 22.04 LTS |
-| CPU | 1 核 | 2 核 |
-| 内存 | 1 GB | 2 GB |
-| 磁盘 | 5 GB 可用 | 20 GB+ |
-| 网络 | 公网 IP 或域名 | 公网 IP + 已备案域名 |
-| 端口 | 8082（或自定） | 80/443（生产） |
+📍 推荐商家：阿里云、腾讯云、华为云均可，购买时勾选"预装宝塔面板"。
 
 ---
 
-## 2. 三种部署场景速查
+### 📦 第 2 步：上传源码
 
-| 场景 | 适用 | SITE_URL | VITE_BASE_PATH | 访问地址 |
-|------|------|----------|---------------|---------|
-| **A. 客户独立域名根部署** | 客户有自己的独立域名（推荐） | `https://shengan.example.com/` | `/` | `https://shengan.example.com/` |
-| **B. 主站子路径部署** | 部署到客户主站的 `/shengan/` 子路径下 | `https://www.example.com/shengan/` | `/shengan/` | `https://www.example.com/shengan/` |
-| **C. IP 直连（仅开发/演示）** | 没有域名，临时测试 | `http://公网IP:8082/` | `/` | `http://公网IP:8082/` |
+**📷 操作位置：** 宝塔面板 → 左侧【文件】→ 顶部【上传】
 
-> 💡 项目已配置化，**场景 A/B 之间切换只需改一个环境变量 + 一行 nginx 配置，无需改任何代码**。
+1. 把开发商发您的 `shengan-seal.zip` 拖到上传区
+2. 上传完成后，**右键** → **解压** → 解压到当前目录
+3. 进入解压出的 `shengan-seal` 文件夹，**全选所有子文件夹** → **右键** → **权限** → 填入 `755` → 确定
+
+✅ **这一步完成的样子：** `shengan-seal/` 下能看到 `backend/`、`dist/`、`images/`、`deploy.sh` 等文件。
 
 ---
 
-## 3. 一键部署步骤
+### 🗄 第 3 步：建数据库
 
-### 3.1 上传项目代码
+**📷 操作位置：** 宝塔面板 → 左侧【数据库】→ 右上【添加数据库】
+
+| 填写项 | 填什么 |
+|--------|--------|
+| 数据库名 | `shengan`（随便起，别用中文） |
+| 用户名 | `shengan`（与库名相同即可） |
+| 密码 | 点【生成】随机一个，**复制保存**到记事本 |
+| 编码 | `utf8mb4` |
+| 访问权限 | 本地服务器 |
+
+📍 **添加完成后立刻做：** 宝塔 → 数据库列表 → 找到 `shengan` → 点【导入】→ 选择开发商提供的 `shengan.sql` 文件 → 导入。
+
+✅ **这一步完成的样子：** 左侧【数据库】→ `shengan` → 【管理】→ 能看到 `products`、`settings`、`articles` 三张表。
+
+---
+
+### ⚙️ 第 4 步：填配置（关键 30 秒）
+
+**📷 操作位置：** 宝塔面板 → 文件 → 进入 `shengan-seal/backend/` → 找到 `.env.example` 文件
+
+1. **右键 `.env.example` → 重命名**为 `.env`
+2. **右键 `.env` → 编辑**
+3. 把下面 4 行里的占位符换成您第 3 步保存的账号密码：
+
+```ini
+# 只需修改这 4 行，其他不要动
+DB_HOST=localhost
+DB_USER=shengan           ← 改成您第 3 步设的用户名
+DB_PASS=在这里填您的密码   ← 改成您第 3 步复制的密码
+DB_NAME=shengan           ← 改成您第 3 步设的数据库名
+```
+
+4. **保存**（左上角【保存】按钮）
+
+---
+
+### 🎬 第 5 步：一键部署
+
+**📷 操作位置：** 宝塔面板 → 左侧【终端】→ 进入 `shengan-seal` 目录
+
+把下面这条命令**整条复制**到终端，按回车：
 
 ```bash
-# 方式 1：从 GitHub 拉取（推荐）
+sudo bash deploy.sh
+```
+
+⏳ **等 3-5 分钟**，终端会滚动一堆白色文字，看到最后一行出现：
+
+```
+✅ 部署完成！访问 http://您的服务器IP:8082/ 即可
+```
+
+就成功了 ✅。
+
+> ⚠️ **如果中途报错**，把整屏文字复制发给开发商技术支持。
+
+---
+
+### 🌐 第 6 步：绑域名 + 申请 SSL
+
+| 子步骤 | 操作 |
+|--------|------|
+| ① 域名解析 | 去您的域名服务商（阿里云/腾讯云 DNS），添加 `A 记录`：主机 `@` → 记录值 `您的服务器IP` |
+| ② 添加站点 | 宝塔 → 【网站】→ 【添加站点】→ 填您的域名 → PHP 版本选【纯静态】→ 提交 |
+| ③ 改配置 | 宝塔 → 网站列表 → 您的域名 → 【设置】→【配置文件】→ 把 `server_name _;` 改成 `server_name 您的域名 www.您的域名;` |
+| ④ 申请 SSL | 宝塔 → 网站 →【SSL】→【Let's Encrypt】→ 勾选两个域名 →【申请】→ 申请成功后【开启强制 HTTPS】开关 |
+| ⑤ 重启 nginx | 宝塔 → 软件商店 → nginx → 【重启】 |
+
+---
+
+### ✅ 第 7 步：验收
+
+浏览器打开 `https://您的域名/`，能同时满足下面 4 条 = 部署成功：
+
+- [ ] 首页有 Logo、有产品图、不裂图
+- [ ] 点【产品中心】能看到至少 8 款产品（不是 0 款！）
+- [ ] 直接用 `http://您的服务器IP/` 访问 → 自动跳转到域名
+- [ ] 浏览器地址栏前面是🔒锁图标（不是⚠️不安全）
+
+🎉 **部署完成！** 接下来交给老板验收即可。如有任意一项 ❌，把报错截图发给开发商。
+
+---
+
+> 👇 **看不懂上面？往下翻 👇** —— 下面是程序员看的完整 220 行技术文档。
+
+---
+
+## 📦 一、给客户的内容
+
+| 文件 | 用途 |
+|------|------|
+| `deploy.sh` | 一键部署脚本（root 执行） |
+| `backend/` | Flask 后端 |
+| `dist/` | 前端构建产物（如已有） |
+| `images/` | 产品图片（已包含示例数据） |
+| `DEPLOY.md` | 本文档 |
+
+> 💡 **客户不需要修改任何代码**。所有静态资源（图片/CSS/JS）使用根路径 `/images/...`、`/api/...`，自动适配任何域名。
+
+---
+
+## 🚀 二、客户部署 3 步
+
+### 步骤 1：上传代码到服务器
+
+```bash
+# 客户在服务器上执行（替换为实际仓库地址）
 cd /var/www
-git clone https://github.com/xingpeiluo-design/shengan-seal.git
-mv shengan-seal shengan-seal-app
-cd shengan-seal-app
-
-# 方式 2：本地 scp 上传（开发者机器执行）
-scp -r ./shengan-seal root@<服务器IP>:/var/www/
+git clone <项目仓库地址> shengan-seal
+cd shengan-seal
 ```
 
-### 3.2 执行一键部署脚本
+### 步骤 2：执行一键部署
 
 ```bash
-# 进入项目目录
-cd /var/www/shengan-seal-app
-
-# 场景 A：客户独立域名（推荐生产环境）
-SITE_URL="https://shengan.example.com/" bash deploy.sh
-
-# 场景 B：主站子路径
-SITE_URL="https://www.example.com/shengan/" bash deploy.sh
-
-# 场景 C：IP 直连（不带域名）
-SITE_URL="http://$(hostname -I | awk '{print $1}'):8082/" bash deploy.sh
+sudo bash deploy.sh
 ```
 
-**脚本会自动完成**：
-1. ✅ 安装系统依赖（nginx、python3、nodejs、npm）
-2. ✅ 创建 Python 虚拟环境 + 安装 Flask/gunicorn
-3. ✅ 初始化 SQLite 数据库（8 款产品 + 设置 + 资讯 + 二维码）
-4. ✅ 根据 `SITE_URL` 自动生成 `.env.production`（含 base path 推导）
-5. ✅ 构建前端（npm install + npm run build）
-6. ✅ 创建 systemd 服务 `shengan-seal`（注入 `SHENGAN_SITE_URL` 环境变量）
-7. ✅ 配置 nginx 反代 + API/图片路由
-8. ✅ 开放防火墙端口
+脚本自动完成：
+- ✅ 安装系统依赖（nginx / python3 / nodejs）
+- ✅ 创建 Python 虚拟环境 + 安装依赖
+- ✅ 初始化数据库（8 款产品 + 设置 + 资讯）
+- ✅ 构建前端（npm install + build）
+- ✅ 配置 systemd 后端服务
+- ✅ 配置 nginx 反向代理
+- ✅ 开放防火墙端口
 
-**部署成功输出**：
-
-```
-========================================
-  盛安密封官网部署完成！
-========================================
-
-  SITE_URL:      https://shengan.example.com/
-  访问地址:       https://shengan.example.com
-  管理后台:       https://shengan.example.com/#/admin
-  默认账号:       admin / shengan2026
-
-  服务管理:
-    systemctl status shengan-seal
-    systemctl restart shengan-seal
-    systemctl reload nginx
-    bash /var/www/shengan-seal-app/deploy.sh
-```
-
-### 3.3 验证部署
+### 步骤 3：配置域名 + SSL
 
 ```bash
-# 检查服务状态
-systemctl status shengan-seal    # 后端（应 active）
-systemctl status nginx           # nginx（应 active）
+# 1. 客户域名解析到服务器 IP（A 记录）
 
-# 访问验证
-curl -I http://<服务器IP>:8082/                          # 首页
-curl -I http://<服务器IP>:8082/api/products              # API
-curl -I http://<服务器IP>:8082/api/sitemap.xml           # sitemap
-```
-
-打开浏览器访问 `http://<服务器IP>:8082/`，应能看到网站首页。
-访问 `http://<服务器IP>:8082/#/admin` 输入 `admin / shengan2026` 进入管理后台。
-
----
-
-## 4. HTTPS 配置（推荐）
-
-生产环境**强烈建议**启用 HTTPS。两种方案：
-
-### 4.1 方案 A：Let's Encrypt 免费证书（推荐）
-
-```bash
-# 安装 certbot
+# 2. 申请 Let's Encrypt 免费 SSL 证书
 apt-get install -y certbot python3-certbot-nginx
-
-# 申请证书（自动配置 nginx）
 certbot --nginx -d shengan.example.com -d www.shengan.example.com
 
-# 测试自动续期
-certbot renew --dry-run
+# 3. 修改 nginx 配置，绑定域名
+vi /etc/nginx/sites-available/shengan-seal
+# 把 server_name _; 改为：server_name shengan.example.com www.shengan.example.com;
+
+systemctl reload nginx
 ```
 
-申请成功后，证书位于：
-- 证书：`/etc/letsencrypt/live/shengan.example.com/fullchain.pem`
-- 私钥：`/etc/letsencrypt/live/shengan.example.com/privkey.pem`
+**部署完成！** 访问 `https://shengan.example.com/` 即可。
 
-然后**重新运行部署脚本**启用 HTTPS：
+---
 
-```bash
-cd /var/www/shengan-seal-app
-SITE_URL="https://shengan.example.com/" \
-ENABLE_HTTPS=true \
-SSL_CERT_PATH="/etc/letsencrypt/live/shengan.example.com/fullchain.pem" \
-SSL_KEY_PATH="/etc/letsencrypt/live/shengan.example.com/privkey.pem" \
-bash deploy.sh
-```
+## 🔒 三、【售卖标准】禁止 IP 直接访问
 
-### 4.2 方案 B：商业 SSL 证书（已签发）
+> **强烈建议**。原因：
+> ① 防止别人用 IP 直接访问客户网站（暴露服务器 IP）
+> ② 避免"用户用 IP 打开 → 资源异常 → 客户找售后"的情况
 
-把 `.crt` 和 `.key` 文件放到服务器任意位置，然后在 deploy 时指定路径：
-
-```bash
-ENABLE_HTTPS=true \
-SSL_CERT_PATH="/path/to/shengan.crt" \
-SSL_KEY_PATH="/path/to/shengan.key" \
-SITE_URL="https://shengan.example.com/" \
-bash deploy.sh
-```
-
-### 4.3 HTTPS 反代（主站子路径场景，已签发主站证书）
-
-如果客户已有主站 `www.example.com` 的 SSL 证书，可以**复用主站证书**走子路径：
+在 `/etc/nginx/sites-available/shengan-seal` 的 `server { ... }` 块**顶部**添加：
 
 ```nginx
-# 在主站 server block 顶部添加
-location = /shengan { return 301 https://$host/shengan/; }
-location /shengan/api/ { proxy_pass http://127.0.0.1:8082/api/; ... }
-location /shengan/images/ { proxy_pass http://127.0.0.1:8082/images/; expires 30d; }
-location /shengan/ { proxy_pass http://127.0.0.1:8082/; ... }
+server {
+    listen 80;
+    listen 443 ssl http2;
+    server_name shengan.example.com www.shengan.example.com;  # ← 客户域名
+
+    # 【售卖标准】IP 访问或未授权域名 → 301 跳转到客户域名
+    if ($host != $server_name) {
+        return 301 https://$server_name$request_uri;
+    }
+
+    ssl_certificate     /etc/letsencrypt/live/shengan.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/shengan.example.com/privkey.pem;
+
+    # ... 其余配置保持不变
+}
 ```
 
-参考配置：`/www/server/panel/vhost/nginx/proxy/maichewei.com/shengan.conf`
+**说明**：
+- 客户用 IP（如 `http://123.45.67.89:8082/`）打开 → 自动跳到 `https://shengan.example.com/`
+- 别人用其他域名指向客户 IP → 也跳到 `https://shengan.example.com/`
+- 客户用 `https://shengan.example.com/` 打开 → 正常访问 ✓
+
+> 如果客户偶尔需要 IP 临时预览（如交付验收期），可以单独开一个 `preview.shengan.example.com` 子域名，不要开放 IP 访问。
 
 ---
 
-## 5. 升级部署
-
-后续收到代码更新时，使用以下流程升级（数据不会丢失）：
+## 🛠 四、运维命令速查
 
 ```bash
-# 1. 备份当前数据库（强烈建议）
-cp /var/www/shengan-seal-app/backend/shengan.db \
-   /var/www/shengan-seal-app/backend/shengan.db.bak.$(date +%Y%m%d)
+# 服务状态
+systemctl status shengan-seal      # 后端
+systemctl status nginx             # nginx
 
-# 2. 拉取最新代码
-cd /var/www/shengan-seal-app
-git pull origin main
+# 重启 / 重载
+systemctl restart shengan-seal     # 后端代码改动后
+systemctl reload nginx             # nginx 配置改动后
 
-# 3. 重新执行部署脚本（自动重建前端 + 重启服务）
-SITE_URL="https://shengan.example.com/" bash deploy.sh
-```
+# 实时日志
+journalctl -u shengan-seal -f      # 后端日志
+tail -f /var/log/nginx/access.log  # nginx 访问日志
+tail -f /var/log/nginx/error.log   # nginx 错误日志
 
-**重要**：SITE_URL 必须与首次部署时一致，否则 sitemap/canonical 会指向错误的域名。
+# 升级代码
+cd /var/www/shengan-seal
+git pull                            # 拉取最新代码
+sudo bash deploy.sh                # 重新部署（保留数据库）
 
-**仅升级前端**（后端没改时）：
-
-```bash
-cd /var/www/shengan-seal-app
-git pull
-npm run build
-scp -r dist/. root@<服务器>:/var/www/shengan-seal-app/dist/
-```
-
-**仅升级后端**（前端没改时）：
-
-```bash
-cd /var/www/shengan-seal-app
-git pull
-scp backend/app.py root@<服务器>:/var/www/shengan-seal-app/backend/
-ssh root@<服务器> 'systemctl restart shengan-seal'
-```
-
----
-
-## 6. 服务管理与运维
-
-### 6.1 systemd 服务
-
-```bash
-# 状态
-systemctl status shengan-seal       # 查看后端运行状态
-systemctl status nginx              # 查看 nginx 运行状态
-
-# 重启
-systemctl restart shengan-seal      # 重启后端（代码改动后必走）
-systemctl reload nginx              # 重载 nginx 配置（不中断服务）
-
-# 日志
-journalctl -u shengan-seal -f       # 实时查看后端日志
-journalctl -u nginx -f              # 实时查看 nginx 访问/错误日志
-
-# 自启动
-systemctl enable shengan-seal       # 开机自启
-```
-
-### 6.2 数据备份
-
-```bash
-# 备份数据库（每日 cron 推荐）
-cp /var/www/shengan-seal-app/backend/shengan.db \
-   /backup/shengan-$(date +%Y%m%d).db
-
-# 备份上传的产品图片
-tar czf /backup/images-$(date +%Y%m%d).tar.gz \
-   /var/www/shengan-seal-app/images/
-```
-
-### 6.3 登录日志清理
-
-服务已内置：
-- 启动时自动清理 90 天前的登录日志
-- 每日凌晨 3 点 cron 自动清理过期数据
-
-如需手动清理：
-
-```bash
-ssh root@<服务器> /usr/local/bin/shengan-clean-logs.sh
+# 数据备份
+cp /var/www/shengan-seal/backend/shengan.db /backup/shengan-$(date +%Y%m%d).db
+tar czf /backup/images-$(date +%Y%m%d).tar.gz /var/www/shengan-seal/images/
 ```
 
 ---
 
-## 7. 常见问题
+## 🆘 五、常见问题
 
-### Q1: 部署后访问首页 502 Bad Gateway
-
-**原因**：后端 gunicorn 没启动成功。
-
+### Q1: 访问首页 502 Bad Gateway
 ```bash
-systemctl status shengan-seal      # 看具体错误
-journalctl -u shengan-seal -n 50   # 查看最近 50 条日志
+systemctl status shengan-seal      # 看后端是否启动
+journalctl -u shengan-seal -n 50   # 查看错误日志
 ```
+常见原因：端口 5000 被占用 → 修改 `deploy.sh` 顶部的 `BACKEND_PORT`。
 
-常见原因：
-- 数据库文件被锁（重启服务即可）
-- 端口 5000 被占用：`netstat -tlnp | grep 5000`
-
-### Q2: 图片显示不出来 / 404
-
-**检查路径配置**：
-
+### Q2: 图片不显示（404）
+检查 nginx 图片 location 块是否生效：
 ```bash
-# 后端是否能访问图片
-curl http://127.0.0.1:5000/images/store_logo.webp
-
-# nginx 是否反代成功
-curl http://127.0.0.1:8082/images/store_logo.webp
+curl -I http://127.0.0.1:8082/images/store_logo.webp
 ```
+应该是 `200 OK`。如果不是，检查 `/var/www/shengan-seal/images/` 目录权限。
 
-如果 404：
-- 子路径部署：检查 vite 的 `VITE_BASE_PATH` 是否正确（应为 `/shengan/`）
-- 独立域名部署：`VITE_BASE_PATH=/`
+### Q3: 产品中心显示"共 0 款产品"
+- 检查 API：`curl http://127.0.0.1:8082/api/products` 应返回 JSON 数组
+- 浏览器 F12 → Network → 过滤 `products`，确认请求 URL 是 `/api/products`（不是 `https://其他域名/api/products`）
 
-### Q3: sitemap.xml 里的 URL 指向主站/旧域名
+### Q4: sitemap.xml 里的 URL 错误
+- 后端已自动从请求头推断站点 URL，无需配置
+- 如需强制指定，在 `/etc/systemd/system/shengan-seal.service` 添加：
+  ```
+  Environment=SHENGAN_SITE_URL=https://shengan.example.com
+  ```
+  然后 `systemctl daemon-reload && systemctl restart shengan-seal`
 
-**原因**：`SHENGAN_SITE_URL` 环境变量未生效。
-
+### Q5: 如何修改默认密码
 ```bash
-# 检查 systemd 服务里的环境变量
-systemctl show shengan-seal | grep SHENGAN_SITE_URL
+# 1. 生成新密码 hash
+python3 -c "import hashlib; print(hashlib.sha256('新密码'.encode()).hexdigest())"
 
-# 修改方法
-vi /etc/systemd/system/shengan-seal.service
-# 把 Environment="SHENGAN_SITE_URL=..." 改成客户域名
-systemctl daemon-reload
+# 2. 替换 app.py 第 27 行
+vi /var/www/shengan-seal/backend/app.py
+# ADMIN_PASS_HASH = hashlib.sha256('新密码'.encode()).hexdigest()
+
+# 3. 重启服务
 systemctl restart shengan-seal
 ```
 
-### Q4: 管理后台登录失败
-
-- 默认账号：`admin / shengan2026`
-- 如果改过密码：在 `backend/app.py` 第 27 行 `ADMIN_PASS_HASH` 重新生成：
-  ```python
-  import hashlib
-  print(hashlib.sha256('新密码'.encode()).hexdigest())
-  ```
-
-### Q5: 端口被占用
+### Q6: 部署到主站子路径（特殊需求）
+**默认是根部署**（推荐）。仅当客户必须部署到主站子路径时：
 
 ```bash
-# 查看占用
-netstat -tlnp | grep -E '8082|5000'
-
-# 修改 deploy.sh 顶部的 PORT 和 BACKEND_PORT
+VITE_BASE_PATH=/shengan/ bash deploy.sh
 ```
 
-### Q6: 部署到已有 nginx 的服务器，80/443 端口被占用
-
-deploy.sh 默认使用 8082 端口，不影响已有服务。如需改用 80：
-
-```bash
-PORT=80 bash deploy.sh
-```
+但**强烈不推荐**——会让客户后续维护复杂化。建议说服客户使用独立域名。
 
 ---
 
-## 8. 关键路径与凭证
-
-### 默认账号
-
-| 项目 | 值 |
-|------|------|
-| 后台账号 | `admin` |
-| 后台密码 | `shengan2026` |
-
-> ⚠️ **首次部署后请立即修改默认密码！** 在 `backend/app.py` 中修改 `ADMIN_PASS_HASH` 后重启服务。
-
-### 关键路径
-
-| 路径 | 用途 |
-|------|------|
-| `/var/www/shengan-seal-app/` | 项目根目录 |
-| `/var/www/shengan-seal-app/backend/shengan.db` | SQLite 数据库 |
-| `/var/www/shengan-seal-app/images/` | 上传的产品图片 |
-| `/var/www/shengan-seal-app/dist/` | 前端构建产物（nginx 直接 serve） |
-| `/var/www/shengan-seal-app/.secret_key` | Flask SECRET_KEY 持久化文件（权限 600） |
-| `/etc/systemd/system/shengan-seal.service` | 后端 systemd 服务配置 |
-| `/etc/nginx/sites-available/shengan-seal` | nginx 站点配置 |
-| `/etc/nginx/ssl/` | SSL 证书存放目录 |
-| `/usr/local/bin/shengan-clean-logs.sh` | 日志清理脚本 |
-| `/etc/cron.d/shengan-clean` | 日志清理 cron |
-
-### 关键端口
-
-| 端口 | 用途 |
-|------|------|
-| 8082 | nginx 对外 HTTP 端口（可改） |
-| 5000 | Flask/gunicorn 后端端口（仅 127.0.0.1 监听，不对外暴露） |
-| 443 | nginx 对外 HTTPS 端口（启用 HTTPS 时） |
-
----
-
-## 交付检查清单
+## 📋 六、交付检查清单
 
 部署完成后请逐项打勾：
 
-- [ ] 网站首页能正常打开，所有图片显示正常
-- [ ] 12 款产品图片都能加载（点击产品详情页确认）
-- [ ] 管理后台能登录（默认 admin / shengan2026）
-- [ ] sitemap.xml 指向正确的域名（curl `/api/sitemap.xml` 检查）
-- [ ] robots.txt 能访问（curl `/api/robots.txt` 检查）
-- [ ] HTTPS 已启用（生产环境）
-- [ ] 默认密码已修改
+- [ ] 网站首页能正常打开（`https://客户域名/`）
+- [ ] 所有图片能正常显示（产品图、Logo）
+- [ ] 8 款产品都能在产品中心看到
+- [ ] 管理后台能登录（默认 `admin / shengan2026`，**已修改默认密码**）
+- [ ] sitemap.xml 能访问（`https://客户域名/sitemap.xml`）
+- [ ] HTTPS 已启用（浏览器显示锁形图标）
+- [ ] IP 访问会被 301 跳转到域名
 - [ ] 数据库自动备份 cron 已配置
-- [ ] 服务器防火墙已配置（开放 80/443 或自定义端口）
 
 ---
 
-## 联系支持
+## 📞 七、技术支持联系
 
-- 项目仓库：https://github.com/xingpeiluo-design/shengan-seal
+- 项目仓库：（由开发者提供）
 - 技术支持：罗东 / 13507402179
 - 工作日记：`00_【操作日记前必读SUMMARY.md、CLAUDE.md】工作日记/`
+
+---
+
+## 💡 附录：客户问答模板（直接复制给客户）
+
+> **Q: 部署后还需要改什么代码吗？**
+> A: 不需要。所有静态资源（图片、JS、CSS、API）都使用根路径（`/images/...`、`/api/...`），自动适配您的域名，无需修改任何代码。
+>
+> **Q: 我换服务器/换域名怎么办？**
+> A: 只需在新服务器上重新执行 `bash deploy.sh`，把域名解析到新 IP 即可。代码无需改动。
+>
+> **Q: 怎么修改默认管理密码？**
+> A: 见本手册"常见问题 Q5"，改完后重启服务即可。
+>
+> **Q: 网站能直接用 IP 访问吗？**
+> A: 不建议。我们已配置 IP 访问会自动跳转到您的域名，这是安全最佳实践。如确实需要 IP 临时预览，请联系开发者。
