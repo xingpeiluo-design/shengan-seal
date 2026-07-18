@@ -213,7 +213,7 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-green-400">
           <div className="flex items-center gap-4">
             <span>{settings.copyright || '© 2024-2026 长沙盛安密封科技有限公司 版权所有'}</span>
-            {settings.icp && settings.icp !== '浙ICP备XXXXXXXX号' && (
+            {settings.icp && settings.icp !== '' && (
               <>
                 <span className="hidden md:inline">|</span>
                 <span className="text-green-500">备案号：{settings.icp}</span>

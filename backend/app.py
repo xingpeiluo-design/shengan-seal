@@ -25,7 +25,24 @@ STATIC_DIST = os.path.join(os.path.dirname(BASE_DIR), 'dist')
 IMAGES_DIR = os.path.join(os.path.dirname(BASE_DIR), 'images')
 ADMIN_USER = 'admin'
 ADMIN_PASS_HASH = hashlib.sha256('shengan2026'.encode()).hexdigest()
-SECRET_KEY = secrets.token_hex(32)
+
+# --- SECRET_KEY 持久化 ---
+# 优先级：环境变量 > 持久化文件 > 首次启动生成
+_SECRET_KEY_FILE = os.path.join(BASE_DIR, '.secret_key')
+_env_secret = os.environ.get('SHENGAN_SECRET_KEY')
+if _env_secret:
+    SECRET_KEY = _env_secret
+elif os.path.exists(_SECRET_KEY_FILE):
+    with open(_SECRET_KEY_FILE, 'r') as _f:
+        SECRET_KEY = _f.read().strip()
+else:
+    SECRET_KEY = secrets.token_hex(32)
+    try:
+        with open(_SECRET_KEY_FILE, 'w') as _f:
+            _f.write(SECRET_KEY)
+        os.chmod(_SECRET_KEY_FILE, 0o600)  # 仅 root 可读写
+    except Exception as _e:
+        print(f'[WARN] 无法写入 SECRET_KEY 持久化文件: {_e}')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -171,6 +188,24 @@ def init_db():
     db.commit()
     db.close()
     _migrate_columns()
+    _auto_cleanup()
+
+def _auto_cleanup():
+    """启动时自动清理过期数据"""
+    try:
+        db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
+        # 清理 90 天前的登录日志
+        cutoff_logs = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
+        deleted_logs = db.execute('DELETE FROM login_logs WHERE created_at < ?', (cutoff_logs,)).rowcount
+        # 清理过期 token
+        deleted_tokens = db.execute('DELETE FROM admin_tokens WHERE expires_at IS NOT NULL AND expires_at < datetime("now","localtime")').rowcount
+        db.commit()
+        db.close()
+        if deleted_logs or deleted_tokens:
+            print(f'[CLEANUP] 清理 {deleted_logs} 条过期日志，{deleted_tokens} 个过期 token')
+    except Exception as e:
+        print(f'[CLEANUP] 清理失败: {e}')
 
 def _column_exists(db, table, column):
     """幂等迁移检查：列是否存在"""
@@ -310,7 +345,7 @@ def seed_data():
             ('company_name', '盛安密封科技有限公司', '公司名称', 'contact'),
             ('company_name_en', 'Shengan Sealing Technology Co., Ltd.', '公司英文名', 'contact'),
             ('copyright', '© 2026 盛安密封科技有限公司 版权所有', '版权信息', 'general'),
-            ('icp', '浙ICP备XXXXXXXX号', 'ICP备案号', 'general'),
+            ('icp', '', 'ICP备案号', 'general'),
             ('site_title', '盛安密封 - 高端包覆式密封条源头制造商', '网站标题', 'seo'),
             ('site_keywords', '包覆式密封条,门窗密封条,断桥铝密封胶条', '网站关键词', 'seo'),
             ('site_description', '盛安密封，高端包覆式密封条专业制造商，四层复合结构...', '网站描述', 'seo'),

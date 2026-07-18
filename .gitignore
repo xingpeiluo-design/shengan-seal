@@ -14,3 +14,7 @@ test-results/
 playwright-report/
 tests/e2e/.venv/
 run-e2e.sh
+
+# 临时文件
+15000
+30000

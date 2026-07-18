@@ -1084,10 +1084,14 @@ function SettingsView() {
             </h3>
             {settings.filter(s => s.category === cat).map(item => (
               <div key={item.key}>
-                <label className="text-xs font-semibold text-gray-600 mb-1 block">{item.label}</label>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                  {item.label}
+                  {item.key === 'icp' && <span className="text-gray-400 font-normal ml-1">（需先到工信部备案后填入，留空不显示）</span>}
+                </label>
                 <input
                   value={values[item.key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [item.key]: e.target.value }))}
+                  placeholder={item.key === 'icp' ? '如：湘ICP备2026000001号' : ''}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]"
                 />
               </div>

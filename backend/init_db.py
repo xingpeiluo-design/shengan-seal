@@ -284,7 +284,7 @@ def seed_settings():
         ('company_name', '盛安密封科技有限公司', '公司名称', 'contact'),
         ('company_name_en', 'Shengan Sealing Technology Co., Ltd.', '公司英文名', 'contact'),
         ('copyright', '© 2026 盛安密封科技有限公司 版权所有', '版权信息', 'general'),
-        ('icp', '浙ICP备XXXXXXXX号', 'ICP备案号', 'general'),
+        ('icp', '', 'ICP备案号', 'general'),
         ('site_title', '盛安密封 - 高端包覆式密封条源头制造商', '网站标题', 'seo'),
         ('site_keywords', '包覆式密封条,门窗密封条,断桥铝密封胶条,盛安密封', '网站关键词', 'seo'),
         ('site_description', '盛安密封，高端包覆式密封条专业制造商，四层复合结构，自粘式安装。', '网站描述', 'seo'),
