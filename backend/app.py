@@ -9,6 +9,8 @@ import csv
 import io
 import zipfile
 import hashlib
+import hmac
+import base64
 import secrets
 import sqlite3
 import shutil
@@ -24,7 +26,6 @@ DB_PATH = os.path.join(BASE_DIR, 'shengan.db')
 STATIC_DIST = os.path.join(os.path.dirname(BASE_DIR), 'dist')
 IMAGES_DIR = os.path.join(os.path.dirname(BASE_DIR), 'images')
 ADMIN_USER = 'admin'
-ADMIN_PASS_HASH = hashlib.sha256('shengan2026'.encode()).hexdigest()
 
 # --- 站点 URL（用于 sitemap、robots.txt、SEO 等） ---
 # 售卖标准：自动从请求头推断，避免硬编码客户域名/IP
@@ -50,6 +51,61 @@ else:
         os.chmod(_SECRET_KEY_FILE, 0o600)  # 仅 root 可读写
     except Exception as _e:
         print(f'[WARN] 无法写入 SECRET_KEY 持久化文件: {_e}')
+
+# --- 密码加密体系（PBKDF2-HMAC-SHA256 + 随机盐 + SECRET_KEY 作 pepper）---
+# 取代原先的纯 sha256（无盐、可被彩虹表/暴力破解）。
+# 存储格式：pbkdf2_sha256$<迭代次数>$<base64(salt)>$<base64(hash)>
+# 兼容旧版 64 位十六进制 sha256 哈希：登录成功时自动升级为新格式，不影响现有账号。
+_PEPPER = SECRET_KEY
+_PBKDF2_ITER = 200000
+
+def _hash_password(pwd):
+    """生成带盐、带 pepper 的 PBKDF2 密码哈希"""
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac('sha256', (pwd + _PEPPER).encode('utf-8'), salt, _PBKDF2_ITER)
+    return f"pbkdf2_sha256${_PBKDF2_ITER}${base64.b64encode(salt).decode()}${base64.b64encode(dk).decode()}"
+
+def _verify_password(pwd, stored):
+    """校验密码。返回 (是否匹配, 升级后的新哈希或None)。
+    旧版 sha256 命中时返回新哈希，调用方应在登录成功后写入，完成静默升级。"""
+    if not stored:
+        return (False, None)
+    if stored.startswith('pbkdf2_sha256$'):
+        try:
+            _, iter_s, salt_b64, hash_b64 = stored.split('$')
+            salt = base64.b64decode(salt_b64)
+            dk = hashlib.pbkdf2_hmac('sha256', (pwd + _PEPPER).encode('utf-8'), salt, int(iter_s))
+            return (hmac.compare_digest(dk, base64.b64decode(hash_b64)), None)
+        except Exception:
+            return (False, None)
+    # 旧版：64 位十六进制 sha256（无盐）
+    if len(stored) == 64 and all(c in '0123456789abcdef' for c in stored):
+        if hashlib.sha256(pwd.encode('utf-8')).hexdigest() == stored:
+            return (True, _hash_password(pwd))
+    return (False, None)
+
+def _default_admin_password():
+    """默认管理员密码：优先级 环境变量 > 持久化文件 > 首次启动随机生成。
+    不再写死已知弱口令，避免被直接破解。"""
+    env_pw = os.environ.get('SHENGAN_ADMIN_PASS')
+    if env_pw:
+        return env_pw
+    pw_file = os.path.join(BASE_DIR, '.admin_pass')
+    if os.path.exists(pw_file):
+        with open(pw_file, 'r') as _f:
+            return _f.read().strip()
+    new_pw = secrets.token_urlsafe(16)  # 强随机密码
+    try:
+        with open(pw_file, 'w') as _f:
+            _f.write(new_pw)
+        os.chmod(pw_file, 0o600)  # 仅 root 可读写
+        print(f'[INIT] 已生成随机后台管理员密码，请妥善保存：{pw_file}')
+    except Exception as _e:
+        print(f'[WARN] 无法写入 .admin_pass 文件: {_e}')
+    return new_pw
+
+# 注意：默认管理员密码哈希在 init_db 种子内部按需生成（仅当 admin_users 为空时），
+# 不在模块导入时计算，避免对已有库产生副作用。
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -250,125 +306,11 @@ def _migrate_columns():
         try:
             db.execute(
                 'INSERT INTO admin_users (username, password_hash, role, remark) VALUES (?, ?, ?, ?)',
-                (ADMIN_USER, ADMIN_PASS_HASH, 'super_admin', '系统初始化账号（自动迁移）')
+                (ADMIN_USER, _hash_password(_default_admin_password()), 'super_admin', '系统初始化账号（自动迁移）')
             )
             print('[migrate] 默认 admin 账号已迁移到 admin_users')
         except Exception as e:
             print(f'[migrate] 默认账号迁移失败: {e}')
-
-    db.commit()
-    db.close()
-
-def seed_data():
-    """初始化种子数据"""
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    # 检查是否已有数据
-    if db.execute('SELECT COUNT(*) as c FROM products').fetchone()['c'] == 0:
-        products = [
-            {
-                'name': '自贴式包覆密封条', 'category': '拼多多C端·家装散户',
-                'badge': '拼多多热销款', 'badge_color': '#e4323c',
-                'highlights': json.dumps(['自带德国进口双面胶','免开槽·免打孔','旧房改装首选','5分钟极速安装']),
-                'description': '主打旧房改装、门店零售、个人家装、小额散单。拼多多无起订量、现货充足、极速发货，包邮到家，适合个人消费者与小批量采购商。',
-                'specs': json.dumps([
-                    {'label':'规格','value':'4mm / 5mm / 6mm / 8mm / 10mm 均有'},
-                    {'label':'颜色','value':'黑色 / 白色 / 定制色'},
-                    {'label':'起订量','value':'1米起拍，无最低要求'},
-                    {'label':'发货','value':'48小时内发货，全国包邮'}
-                ]),
-                'use_cases': json.dumps(['旧窗改造密封','门缝隔音隔风','家装门窗升级','阳台推拉门密封']),
-                'bg_color': '#f0f9f4', 'border_color': '#7ecfa0',
-                'price': '¥2.8/米起', 'pdd_link': 'https://mobile.yangkeduo.com'
-            },
-            {
-                'name': '卡槽式包覆密封条', 'category': 'B端工程·批发合作',
-                'badge': '工程配套主力款', 'badge_color': '#0F6637',
-                'highlights': json.dumps(['TPU倒钩卡紧不掉','稳固耐用密封性强','大批量阶梯低价','支持OEM贴牌']),
-                'description': '主打门窗厂大批量配套、阳光房工程、地产精装项目。支持对公长期合作、OEM贴牌定制、阶梯底价、含税开票，适配工厂、工程商、地产采购。',
-                'specs': json.dumps([
-                    {'label':'规格','value':'全系列宽度·卡槽尺寸定制'},
-                    {'label':'起订量','value':'100米起批，10000米以上享底价'},
-                    {'label':'合作方式','value':'含税报价·对公签约·经销授权'},
-                    {'label':'定制','value':'来样开模，7-15天交期'}
-                ]),
-                'use_cases': json.dumps(['门窗厂长期配套','阳光房工程项目','地产精装楼盘','OEM贴牌代工']),
-                'bg_color': '#f0f4f9', 'border_color': '#0F6637',
-                'price': '¥2.2/米起', 'pdd_link': 'https://mobile.yangkeduo.com'
-            },
-        ]
-        for p in products:
-            db.execute('''
-                INSERT INTO products (name, category, badge, badge_color, highlights, description, specs, use_cases, bg_color, border_color, price, pdd_link)
-                VALUES (:name, :category, :badge, :badge_color, :highlights, :description, :specs, :use_cases, :bg_color, :border_color, :price, :pdd_link)
-            ''', p)
-
-    if db.execute('SELECT COUNT(*) as c FROM sub_products').fetchone()['c'] == 0:
-        subs = [
-            {'name': '断桥铝专用密封条', 'icon': '🪟', 'description': '专为断桥铝型材设计，完美卡槽适配，工厂量产批量供应'},
-            {'name': '阳光房专用密封条', 'icon': '🌤️', 'description': '耐候性强，抗UV，高温低温不变形，工程配套首选'},
-            {'name': '室内木门隔音密封条', 'icon': '🚪', 'description': '超强隔音效果，母婴级环保，家装工程均适用'},
-            {'name': '推拉门密封胶条', 'icon': '↔️', 'description': '高耐磨PU材质，推拉顺滑，防尘防风，长效耐用'},
-        ]
-        for i, s in enumerate(subs):
-            s['sort_order'] = i
-            db.execute('INSERT INTO sub_products (name, icon, description, sort_order) VALUES (:name, :icon, :description, :sort_order)', s)
-
-    if db.execute('SELECT COUNT(*) as c FROM news').fetchone()['c'] == 0:
-        news_list = [
-            {'title': '自贴式密封条5分钟快速安装教程——旧房改造必看', 'category': '安装教程',
-             'summary': '详细图文步骤，手把手教您如何为推拉门、平开窗安装自贴式包覆密封条，无需工具，5分钟内完成安装...',
-             'tags': json.dumps(['安装教程','自贴式','旧房改造']), 'read_time': '3分钟'},
-            {'title': '断桥铝门窗密封条选购指南：PVC vs PU包覆式，差距不止3倍', 'category': '行业科普',
-             'summary': '市场上密封条质量参差不齐，本文深度对比PVC传统胶条和PU包覆式密封条在隔音、寿命、环保等方面的差异...',
-             'tags': json.dumps(['断桥铝密封条','选购指南','PU密封条']), 'read_time': '5分钟'},
-            {'title': '盛安密封新品上市：加厚阳光房专用密封条，耐候性升级30%', 'category': '工厂资讯',
-             'summary': '针对阳光房特殊使用环境（高温、强UV、大风雨），盛安研发推出新一代加厚阳光房专用密封条，全面升级...',
-             'tags': json.dumps(['新品发布','阳光房密封条','耐候性']), 'read_time': '2分钟'},
-            {'title': '2026年国家门窗密封条检测标准更新解读，厂家必看', 'category': '建材标准',
-             'summary': '国家最新建材检测标准对门窗密封条的VOC、压缩永久变形率、热老化性能提出更高要求，盛安全系产品已满足...',
-             'tags': json.dumps(['检测标准','合规','环保']), 'read_time': '4分钟'},
-            {'title': '门窗隔音改造完整方案：不拆窗，密封条就能解决80%漏音问题', 'category': '改造知识',
-             'summary': '不少用户反映噪音困扰，其实大部分漏音都是密封不严导致的。本文分享一套低成本、高效的门窗隔音密封改造方案...',
-             'tags': json.dumps(['隔音改造','门窗密封','降噪方案']), 'read_time': '6分钟'},
-            {'title': '温州/浙江地区门窗厂密封材料采购渠道深度整理', 'category': 'SEO专题',
-             'summary': '整理了温州及浙江地区门窗加工厂、阳光房工程公司、装修公司的密封材料主流采购渠道和价格区间，供参考...',
-             'tags': json.dumps(['温州密封条','门窗厂配套','本地工程']), 'read_time': '4分钟'},
-        ]
-        for n in news_list:
-            db.execute('''
-                INSERT INTO news (title, category, summary, tags, read_time)
-                VALUES (:title, :category, :summary, :tags, :read_time)
-            ''', n)
-
-    if db.execute('SELECT COUNT(*) as c FROM settings').fetchone()['c'] == 0:
-        settings = [
-            ('pdd_link', 'https://mobile.yangkeduo.com', '拼多多店铺链接', 'channel'),
-            ('pdd_link_1688', 'https://shop.1688.com', '1688批发链接', 'channel'),
-            ('hotline', '400-888-SEAL', '采购热线', 'contact'),
-            ('factory_phone', '138-0000-1234', '工厂直线', 'contact'),
-            ('address', '浙江省温州市某某工业园区XX路XX号', '厂区地址', 'contact'),
-            ('work_hours', '周一至周六 8:00-18:00', '工作时间', 'contact'),
-            ('company_name', '盛安密封科技有限公司', '公司名称', 'contact'),
-            ('company_name_en', 'Shengan Sealing Technology Co., Ltd.', '公司英文名', 'contact'),
-            ('copyright', '© 2026 盛安密封科技有限公司 版权所有', '版权信息', 'general'),
-            ('icp', '', 'ICP备案号', 'general'),
-            ('site_title', '盛安密封 - 高端包覆式密封条源头制造商', '网站标题', 'seo'),
-            ('site_keywords', '包覆式密封条,门窗密封条,断桥铝密封胶条', '网站关键词', 'seo'),
-            ('site_description', '盛安密封，高端包覆式密封条专业制造商，四层复合结构...', '网站描述', 'seo'),
-            ('top_banner', '源头工厂直供｜包覆式密封条现货批发，工程配套、来样定制', '顶部横幅标语', 'general'),
-        ]
-        for s in settings:
-            db.execute('INSERT INTO settings (key, value, label, category) VALUES (?,?,?,?)', s)
-
-    if db.execute('SELECT COUNT(*) as c FROM qr_codes').fetchone()['c'] == 0:
-        qrs = [
-            {'type': 'wechat', 'label': '微信客服', 'description': '悬浮侧边栏微信图标点击弹窗'},
-            {'type': 'douyin', 'label': '抖音视频号', 'description': '悬浮侧边栏抖音图标点击弹窗'},
-            {'type': 'pdd', 'label': '拼多多店铺', 'description': '底部联系区展示'},
-        ]
-        for q in qrs:
-            db.execute('INSERT INTO qr_codes (type, label, description) VALUES (:type, :label, :description)', q)
 
     db.commit()
     db.close()
@@ -392,9 +334,6 @@ def _log_login(username, success, reason=''):
         (username, _get_client_ip(), request.headers.get('User-Agent', '')[:200], 1 if success else 0, reason)
     )
     db.commit()
-
-def _hash_password(pwd):
-    return hashlib.sha256(pwd.encode()).hexdigest()
 
 def generate_token(user='admin'):
     token = secrets.token_hex(24)
@@ -463,9 +402,9 @@ def login():
     if not user or not pwd:
         return jsonify({'error': '账号和密码不能为空'}), 400
 
-    pwd_hash = _hash_password(pwd)
     db = get_db()
     row = db.execute('SELECT * FROM admin_users WHERE username=?', (user,)).fetchone()
+    ok, upgraded = _verify_password(pwd, row['password_hash'] if row else None)
 
     if not row:
         _log_login(user, False, '账号不存在')
@@ -492,7 +431,7 @@ def login():
             pass
 
     # 验证密码
-    if pwd_hash != row['password_hash']:
+    if not ok:
         # 累计失败次数
         failed = (row['failed_attempts'] or 0) + 1
         locked_until = None
@@ -517,6 +456,9 @@ def login():
         }), 401
 
     # 登录成功
+    if upgraded:
+        # 旧版 sha256 哈希命中：静默升级为新格式，下一次登录即走 PBKDF2
+        db.execute('UPDATE admin_users SET password_hash=? WHERE id=?', (upgraded, row['id']))
     db.execute('UPDATE admin_users SET failed_attempts=0, locked_until=NULL, last_login_at=?, last_login_ip=? WHERE id=?',
                (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), _get_client_ip(), row['id']))
     db.commit()
@@ -540,7 +482,8 @@ def change_password():
     row = db.execute('SELECT * FROM admin_users WHERE username=?', (g.current_user,)).fetchone()
     if not row:
         return jsonify({'error': '账号不存在'}), 404
-    if _hash_password(old_pwd) != row['password_hash']:
+    _ok, _up = _verify_password(old_pwd, row['password_hash'])
+    if not _ok:
         return jsonify({'error': '原密码错误'}), 401
 
     db.execute('UPDATE admin_users SET password_hash=? WHERE id=?', (_hash_password(new_pwd), row['id']))
@@ -1636,10 +1579,17 @@ def serve_frontend(path):
     return send_from_directory(STATIC_DIST, 'index.html')
 
 # ============ 启动 ============
+# 说明：种子数据统一由 init_db.py 负责（已幂等：仅空表时插入）。
+# 生产环境（gunicorn 以模块方式 import，走 else 分支）只确保表结构+迁移，
+# 不在此处灌数据，避免多 worker 并发启动时竞态重复插入。初始数据由 deploy.sh 调用 init_db.py 完成。
 if __name__ == '__main__':
     init_db()
-    seed_data()
+    import init_db as _seeder
+    _seeder.seed_products()
+    _seeder.seed_sub_products()
+    _seeder.seed_settings()
+    _seeder.seed_qr_codes()
+    _seeder.seed_news()
     app.run(host='0.0.0.0', port=5000, debug=True)
 else:
     init_db()
-    seed_data()

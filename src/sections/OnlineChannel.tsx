@@ -1,3 +1,5 @@
+import { useSettings } from '../lib/settings'
+
 interface OnlineChannelProps {
   onSampleClick: () => void
 }
@@ -22,6 +24,7 @@ const channelComplement = [
 ]
 
 export default function OnlineChannel({ onSampleClick }: OnlineChannelProps) {
+  const settings = useSettings()
   return (
     <section id="channel" className="py-16 bg-[#0a3d1f]">
       <div className="max-w-7xl mx-auto px-6">
@@ -71,7 +74,7 @@ export default function OnlineChannel({ onSampleClick }: OnlineChannelProps) {
                 ))}
               </ul>
               <a
-                href="https://mobile.yangkeduo.com"
+                href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-pdd-btn="channel-main"

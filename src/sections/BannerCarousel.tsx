@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSettings } from '../lib/settings'
 
 interface BannerCarouselProps {
   onSampleClick: () => void
@@ -19,7 +20,7 @@ const slides = [
     cta1: '查看产品',
     cta2: '拼多多进店采购',
     href1: '#products',
-    href2: 'https://mobile.yangkeduo.com',
+    href2: '',
   },
   {
     id: 2,
@@ -61,6 +62,7 @@ interface BannerCarouselProps {
 
 export default function BannerCarousel({ onSampleClick }: BannerCarouselProps) {
   const [current, setCurrent] = useState(0)
+  const settings = useSettings()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -122,10 +124,10 @@ export default function BannerCarousel({ onSampleClick }: BannerCarouselProps) {
             >
               {slide.cta1}
             </a>
-            {slide.href2 ? (
+            {slide.href2 || settings.pdd_link ? (
               <a
-                href={slide.href2}
-                target={slide.href2.startsWith('http') ? '_blank' : undefined}
+                href={slide.href2?.startsWith('http') ? slide.href2 : (settings.pdd_link || '#')}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="btn-pdd px-8 py-3 rounded font-bold text-base"
                 data-pdd-btn="banner"

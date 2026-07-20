@@ -1,3 +1,5 @@
+import { useSettings } from '../lib/settings'
+
 const cases = [
   {
     type: '门窗厂配套',
@@ -42,6 +44,7 @@ const cases = [
 ]
 
 export default function EngineeringCases() {
+  const settings = useSettings()
   return (
     <section id="cases" className="py-16 bg-[#F8F8F5]">
       <div className="max-w-7xl mx-auto px-6">
@@ -116,7 +119,7 @@ export default function EngineeringCases() {
               立即咨询工程合作
             </a>
             <a
-              href="https://mobile.yangkeduo.com"
+              href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
               target="_blank"
               rel="noopener noreferrer"
               className="bg-[#e4323c] text-white px-6 py-2.5 rounded font-bold text-sm hover:bg-[#c8282f] transition-colors"

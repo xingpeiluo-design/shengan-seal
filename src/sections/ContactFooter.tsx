@@ -131,7 +131,7 @@ export default function ContactFooter({ onSampleClick }: ContactFooterProps) {
                申请免费寄样
             </button>
             <div className="mt-4 text-xs text-green-300 space-y-1">
-              <div>微信客服：13507402179（罗生）</div>
+              <div>微信客服：{settings.hotline || '13507402179'}（罗生）</div>
               <div>座机：0731-86869145</div>
             </div>
           </div>

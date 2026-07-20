@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useSettings } from '../lib/settings'
 
 interface HeaderProps {
   onSampleClick: () => void
 }
 
 export default function Header({ onSampleClick }: HeaderProps) {
+  const settings = useSettings()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const isHome = location.pathname === '/'
@@ -88,15 +90,8 @@ export default function Header({ onSampleClick }: HeaderProps) {
 
           {/* 右上角快捷按钮 */}
           <div className="hidden md:flex items-center gap-2">
-            <Link
-              to="/admin"
-              className="flex items-center gap-1 bg-white/15 hover:bg-white/25 text-white text-sm px-3 py-2 rounded font-semibold transition-colors border border-white/20"
-              title="管理后台入口"
-            >
-              <span>🔐</span> 管理后台
-            </Link>
             <a
-              href="https://mobile.yangkeduo.com"
+              href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 bg-[#e4323c] text-white text-sm px-3 py-2 rounded font-semibold hover:bg-[#c8282f] transition-colors"
@@ -131,7 +126,7 @@ export default function Header({ onSampleClick }: HeaderProps) {
             {navItems.map(item => renderNavLink(item, () => setMobileOpen(false), true))}
             <div className="flex gap-2 mt-3 px-2">
               <a
-                href="https://mobile.yangkeduo.com"
+                href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 text-center bg-[#e4323c] text-white text-sm px-3 py-2 rounded font-semibold"
@@ -144,13 +139,6 @@ export default function Header({ onSampleClick }: HeaderProps) {
               >
                 📦 免费寄样
               </button>
-              <Link
-                to="/admin"
-                onClick={() => setMobileOpen(false)}
-                className="flex-1 text-center bg-white/15 text-white text-sm px-3 py-2 rounded font-semibold border border-white/20"
-              >
-                🔐 管理后台
-              </Link>
             </div>
           </div>
         )}

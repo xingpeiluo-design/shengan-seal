@@ -135,10 +135,12 @@ def get_product_images(prod_num):
     return gallery, details
 
 def seed_products():
-    """灌入8款产品完整数据"""
+    """灌入8款产品完整数据（仅空表时插入，幂等）"""
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
-    db.execute('DELETE FROM products')
+    if db.execute('SELECT COUNT(*) FROM products').fetchone()[0] > 0:
+        db.close()
+        return
 
     products = [
         {
@@ -259,7 +261,9 @@ def seed_products():
 
 def seed_sub_products():
     db = sqlite3.connect(DB_PATH)
-    db.execute('DELETE FROM sub_products')
+    if db.execute('SELECT COUNT(*) FROM sub_products').fetchone()[0] > 0:
+        db.close()
+        return
     subs = [
         ('断桥铝专用密封条', '🪟', '专为断桥铝型材设计，完美卡槽适配，工厂量产批量供应', 0),
         ('阳光房专用密封条', '🌤️', '耐候性强，抗UV，高温低温不变形，工程配套首选', 1),
@@ -274,14 +278,16 @@ def seed_sub_products():
 
 def seed_settings():
     db = sqlite3.connect(DB_PATH)
-    db.execute('DELETE FROM settings')
+    if db.execute('SELECT COUNT(*) FROM settings').fetchone()[0] > 0:
+        db.close()
+        return
     settings = [
         ('pdd_link', 'https://mobile.yangkeduo.com/mall_page.html?msn=k7pr4d6why42zzo5f4zyvjn64y_axbuy', '拼多多店铺链接', 'channel'),
-        ('hotline', '400-888-SEAL', '采购热线', 'contact'),
+        ('hotline', '13507402179', '采购热线', 'contact'),
         ('factory_phone', '138-0000-1234', '工厂直线', 'contact'),
         ('address', '浙江省温州市某某工业园区XX路XX号', '厂区地址', 'contact'),
         ('work_hours', '周一至周六 8:00-18:00', '工作时间', 'contact'),
-        ('company_name', '盛安密封科技有限公司', '公司名称', 'contact'),
+        ('company_name', '长沙盛安密封科技有限公司', '公司名称', 'contact'),
         ('company_name_en', 'Shengan Sealing Technology Co., Ltd.', '公司英文名', 'contact'),
         ('copyright', '© 2026 盛安密封科技有限公司 版权所有', '版权信息', 'general'),
         ('icp', '', 'ICP备案号', 'general'),
@@ -298,7 +304,9 @@ def seed_settings():
 
 def seed_qr_codes():
     db = sqlite3.connect(DB_PATH)
-    db.execute('DELETE FROM qr_codes')
+    if db.execute('SELECT COUNT(*) FROM qr_codes').fetchone()[0] > 0:
+        db.close()
+        return
     qrs = [
         ('wechat', '微信客服', '悬浮侧边栏微信图标点击弹窗'),
         ('douyin', '抖音视频号', '悬浮侧边栏抖音图标点击弹窗'),
@@ -312,7 +320,9 @@ def seed_qr_codes():
 
 def seed_news():
     db = sqlite3.connect(DB_PATH)
-    db.execute('DELETE FROM news')
+    if db.execute('SELECT COUNT(*) FROM news').fetchone()[0] > 0:
+        db.close()
+        return
     news_list = [
         ('自贴式密封条5分钟快速安装教程——旧房改造必看', '安装教程',
          '详细图文步骤，手把手教您如何为推拉门、平开窗安装自贴式包覆密封条，无需工具，5分钟内完成安装。',

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSettings } from '../lib/settings'
 
 interface FloatSidebarProps {
   onSampleClick: () => void
@@ -7,6 +8,7 @@ interface FloatSidebarProps {
 }
 
 export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinClick }: FloatSidebarProps) {
+  const settings = useSettings()
   const [showBackTop, setShowBackTop] = useState(false)
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
 
         {/* 拼多多入口 */}
         <a
-          href="https://mobile.yangkeduo.com"
+          href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
           target="_blank"
           rel="noopener noreferrer"
           data-pdd-btn="sidebar"
@@ -78,7 +80,7 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
         <div className="flex items-stretch">
           {/* 拼多多置顶核心入口 */}
           <a
-            href="https://mobile.yangkeduo.com"
+            href={settings.pdd_link || 'https://mobile.yangkeduo.com'}
             target="_blank"
             rel="noopener noreferrer"
             data-pdd-btn="mobile-bottom"
@@ -102,7 +104,7 @@ export default function FloatSidebar({ onSampleClick, onWechatClick, onDouyinCli
             <span className="text-[10px] font-bold mt-0.5">免费寄样</span>
           </button>
           <a
-            href="tel:13507402179"
+            href={`tel:${settings.hotline || '13507402179'}`}
             className="flex-1 bg-[#1a7a42] text-white flex flex-col items-center justify-center py-2.5"
           >
             <span className="text-base">📞</span>

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { useSettings } from './lib/settings'
 import Header from './sections/Header'
 import TopBanner from './sections/TopBanner'
 import BannerCarousel from './sections/BannerCarousel'
@@ -23,6 +24,32 @@ import ProductDetail from './sections/ProductDetail'
 function HomePage() {
   const [showSampleModal, setShowSampleModal] = useState(false)
   const [showQRModal, setShowQRModal] = useState<'wechat' | 'douyin' | null>(null)
+  const settings = useSettings()
+
+  // SEO 元数据随后台「热线」同步：避免 index.html 里写死的电话与后台不一致
+  useEffect(() => {
+    const tel = settings?.hotline
+    if (!tel) return
+    document
+      .querySelectorAll('meta[name="description"], meta[property="og:description"]')
+      .forEach((m) => {
+        const c = m.getAttribute('content') || ''
+        if (c) m.setAttribute('content', c.replace(/1[3-9]\d{9}/, tel))
+      })
+    document
+      .querySelectorAll('script[type="application/ld+json"]')
+      .forEach((s) => {
+        try {
+          const data = JSON.parse(s.textContent || '{}')
+          if (data.telephone) {
+            data.telephone = '+86-' + tel
+            s.textContent = JSON.stringify(data)
+          }
+        } catch {
+          /* 忽略非 JSON-LD 脚本 */
+        }
+      })
+  }, [settings])
 
   return (
     <div className="min-h-screen bg-[#F8F8F5]">

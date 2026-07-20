@@ -21,3 +21,10 @@ run-e2e.sh
 
 # 备份目录（不进 git，单独存储到外部）
 backups/
+
+# 密钥 / 凭据文件（含 SECRET_KEY 与随机生成的默认管理员密码，禁止提交）
+.secret_key
+.admin_pass
+.env.local
+.env.*.local
+
