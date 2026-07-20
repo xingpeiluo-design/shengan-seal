@@ -4,15 +4,37 @@
 通过 VPS 后端 API 操作
 """
 import json
+import os
 import requests
 import sys
 
-API_BASE = "http://139.224.186.15:8082/api"
-USER = "admin"
-PASS = "shengan2026"
+# 安全加固：凭据与地址不再写死在源码。
+# - API 地址：环境变量 SHENGAN_API_BASE，默认生产 HTTPS 入口。
+# - 管理员账号：环境变量 SHENGAN_ADMIN_USER（默认 admin）。
+# - 管理员密码：优先环境变量 SHENGAN_ADMIN_PASS，其次读取与 app.py 同级的
+#   .admin_pass 文件（启动时生成的随机强密码），缺失则直接报错退出。
+API_BASE = os.environ.get('SHENGAN_API_BASE', 'https://maichewei.com/shengan/api')
+ADMIN_USER = os.environ.get('SHENGAN_ADMIN_USER', 'admin')
+
+def _load_admin_pass():
+    env_pw = os.environ.get('SHENGAN_ADMIN_PASS')
+    if env_pw:
+        return env_pw
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '.admin_pass'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.admin_pass'),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            with open(path, 'r') as _f:
+                return _f.read().strip()
+    sys.exit('[ERROR] 未找到管理员密码：请设置环境变量 SHENGAN_ADMIN_PASS，'
+             '或在 .admin_pass 文件提供（与 backend/app.py 一致）。')
+
+ADMIN_PASS = _load_admin_pass()
 
 def api_login():
-    resp = requests.post(f"{API_BASE}/auth/login", json={"user": USER, "pass": PASS})
+    resp = requests.post(f"{API_BASE}/auth/login", json={"user": ADMIN_USER, "pass": ADMIN_PASS})
     data = resp.json()
     if "token" not in data:
         print(f"Login failed: {data}")

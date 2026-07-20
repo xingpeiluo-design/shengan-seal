@@ -109,7 +109,10 @@ def _default_admin_password():
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
-CORS(app)
+# 安全加固：CORS 收敛到已知生产源，禁止 `*` 通配（默认仅官网域名，可用
+# 环境变量 CORS_ORIGINS 以逗号追加其他可信源，如本地调试域名）。
+_CORS_ORIGINS = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'https://maichewei.com').split(',') if o.strip()]
+CORS(app, origins=_CORS_ORIGINS, supports_credentials=False)
 
 # ============ 数据库 ============
 def get_db():
@@ -1590,6 +1593,13 @@ if __name__ == '__main__':
     _seeder.seed_settings()
     _seeder.seed_qr_codes()
     _seeder.seed_news()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # 安全加固：禁止写死 debug=True（Werkzeug 调试器可被用于 RCE）。
+    # 仅当显式设置环境变量 FLASK_DEBUG=1 才开启调试；默认绑定 127.0.0.1。
+    # 生产由 gunicorn 以模块方式 import，走上方 else 分支，不会执行此 app.run。
+    app.run(
+        host=os.environ.get('APP_HOST', '127.0.0.1'),
+        port=int(os.environ.get('APP_PORT', '5000')),
+        debug=os.environ.get('FLASK_DEBUG', '0') == '1',
+    )
 else:
     init_db()
