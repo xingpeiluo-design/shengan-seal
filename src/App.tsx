@@ -26,25 +26,24 @@ function HomePage() {
   const [showQRModal, setShowQRModal] = useState<'wechat' | 'douyin' | null>(null)
   const settings = useSettings()
 
-  // SEO 元数据随后台「热线」同步：避免 index.html 里写死的电话与后台不一致
+  // SEO 元数据随后台「热线」动态生成：源码不写死电话，避免与后台不一致
   useEffect(() => {
     const tel = settings?.hotline
     if (!tel) return
+    const desc = `盛安密封是湖南长沙专业的包覆式密封条源头厂家，主营隐形门密封条、推拉门隔音胶条、防盗门密封条、自粘门窗胶条、铝合金密封条等产品。8年密封条生产经验，支持OEM定制，全国发货，工厂直供价格优势。热线：${tel}`
     document
-      .querySelectorAll('meta[name="description"], meta[property="og:description"]')
-      .forEach((m) => {
-        const c = m.getAttribute('content') || ''
-        if (c) m.setAttribute('content', c.replace(/1[3-9]\d{9}/, tel))
-      })
+      .querySelectorAll('meta[name="description"]')
+      .forEach((m) => m.setAttribute('content', desc))
+    document
+      .querySelectorAll('meta[property="og:description"]')
+      .forEach((m) => m.setAttribute('content', desc))
     document
       .querySelectorAll('script[type="application/ld+json"]')
       .forEach((s) => {
         try {
           const data = JSON.parse(s.textContent || '{}')
-          if (data.telephone) {
-            data.telephone = '+86-' + tel
-            s.textContent = JSON.stringify(data)
-          }
+          data.telephone = '+86-' + tel
+          s.textContent = JSON.stringify(data)
         } catch {
           /* 忽略非 JSON-LD 脚本 */
         }
