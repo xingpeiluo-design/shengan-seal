@@ -10,10 +10,15 @@ export function getSettings(): Promise<SettingsMap> {
   if (!_promise) {
     _promise = api.settings
       .list()
-      .then((rows: any[]) => {
-        const map: SettingsMap = {}
-        for (const r of rows || []) map[r.key] = r.value
-        return map
+      .then((data: any) => {
+        // 后端 /api/settings 实际返回扁平对象 {key: value}
+        // 兼容历史数组格式 [{key, value}]
+        if (Array.isArray(data)) {
+          const map: SettingsMap = {}
+          for (const r of data || []) map[r.key] = r.value
+          return map
+        }
+        return data && typeof data === 'object' ? (data as SettingsMap) : ({} as SettingsMap)
       })
       .catch(() => ({}) as SettingsMap)
   }

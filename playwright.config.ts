@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
  * 盛安密封官网 E2E 测试配置
  * 可复用于其他网站项目，修改 BASE_URL 即可
  */
-const BASE_URL = process.env.BASE_URL || 'http://139.224.186.15:8082';
+const BASE_URL = process.env.BASE_URL || 'https://maichewei.com/shengan';
 
 export default defineConfig({
   testDir: './tests/e2e',
