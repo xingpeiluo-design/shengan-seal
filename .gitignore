@@ -28,3 +28,6 @@ backups/
 .env.local
 .env.*.local
 
+# 编辑器本地配置
+.vscode/
+
