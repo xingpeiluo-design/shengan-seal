@@ -26,23 +26,43 @@ function HomePage() {
   const [showQRModal, setShowQRModal] = useState<'wechat' | 'douyin' | null>(null)
   const settings = useSettings()
 
-  // SEO 元数据随后台「热线」动态生成：源码不写死电话，避免与后台不一致
+  // SEO 元数据随后台设置动态生成：标题/描述优先用后台「网站标题」「网站描述」，
+  // 避免与后台不一致（源码不再写死，编辑后台即可生效）
   useEffect(() => {
     const tel = settings?.hotline
-    if (!tel) return
-    const desc = `盛安密封是湖南长沙专业的包覆式密封条源头厂家，主营隐形门密封条、推拉门隔音胶条、防盗门密封条、自粘门窗胶条、铝合金密封条等产品。8年密封条生产经验，支持OEM定制，全国发货，工厂直供价格优势。热线：${tel}`
-    document
-      .querySelectorAll('meta[name="description"]')
-      .forEach((m) => m.setAttribute('content', desc))
-    document
-      .querySelectorAll('meta[property="og:description"]')
-      .forEach((m) => m.setAttribute('content', desc))
+    const title = settings?.site_title
+    const desc = settings?.site_description
+
+    // 后台「网站标题」驱动浏览器标签栏与 og:title
+    if (title) {
+      document.title = title
+      document
+        .querySelectorAll('meta[property="og:title"]')
+        .forEach((m) => m.setAttribute('content', title))
+    }
+
+    // 后台「网站描述」优先；为空时回退到含热线的默认模板
+    const finalDesc =
+      desc ||
+      (tel
+        ? `盛安密封是湖南长沙专业的包覆式密封条源头厂家，主营隐形门密封条、推拉门隔音胶条、防盗门密封条、自粘门窗胶条、铝合金密封条等产品。8年密封条生产经验，支持OEM定制，全国发货，工厂直供价格优势。热线：${tel}`
+        : '')
+    if (finalDesc) {
+      document
+        .querySelectorAll('meta[name="description"]')
+        .forEach((m) => m.setAttribute('content', finalDesc))
+      document
+        .querySelectorAll('meta[property="og:description"]')
+        .forEach((m) => m.setAttribute('content', finalDesc))
+    }
+
+    // JSON-LD 电话同步后台热线
     document
       .querySelectorAll('script[type="application/ld+json"]')
       .forEach((s) => {
         try {
           const data = JSON.parse(s.textContent || '{}')
-          data.telephone = '+86-' + tel
+          if (tel) data.telephone = '+86-' + tel
           s.textContent = JSON.stringify(data)
         } catch {
           /* 忽略非 JSON-LD 脚本 */
