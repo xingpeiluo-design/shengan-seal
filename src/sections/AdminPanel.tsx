@@ -144,7 +144,7 @@ interface AdminPanelProps {
   onBack: () => void
 }
 
-type AdminTab = 'dashboard' | 'products' | 'news' | 'messages' | 'samples' | 'settings' | 'security'
+type AdminTab = 'dashboard' | 'products' | 'news' | 'messages' | 'samples' | 'settings' | 'qrcodes' | 'security'
 
 // ============ 登录页面 ============
 function LoginPage({ onLogin, onBack }: { onLogin: () => void; onBack: () => void }) {
@@ -270,6 +270,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     { key: 'messages', label: '留言管理', icon: '✉️' },
     { key: 'samples', label: '寄样申请', icon: '📦' },
     { key: 'settings', label: '渠道设置', icon: '⚙️' },
+    { key: 'qrcodes', label: '二维码', icon: '🔳' },
     ...(currentRole === 'super_admin' ? [{ key: 'security' as AdminTab, label: '账号与安全', icon: '🛡️' }] : []),
   ]
 
@@ -323,6 +324,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         {activeTab === 'messages' && <MessagesView />}
         {activeTab === 'samples' && <SamplesView />}
         {activeTab === 'settings' && <SettingsView />}
+        {activeTab === 'qrcodes' && <QrCodesView />}
         {activeTab === 'security' && <SecurityView currentUsername={currentUsername} toast={toast} />}
       </div>
     </div>
@@ -1096,6 +1098,122 @@ function SettingsView() {
                 />
               </div>
             ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============ 二维码管理 ============
+const QR_TYPE_LABELS: Record<string, string> = {
+  wechat: '微信客服二维码',
+  douyin: '抖音视频号二维码',
+  pdd: '拼多多店铺二维码',
+}
+
+function QrCodesView() {
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState<number | null>(null)
+  const [uploadingId, setUploadingId] = useState<number | null>(null)
+  const toast = useToast()
+
+  const load = useCallback(() => {
+    setLoading(true)
+    api.qrCodes.list()
+      .then((data: any[]) => { setItems(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const setField = (id: number, key: string, value: string) => {
+    setItems(prev => prev.map(it => it.id === id ? { ...it, [key]: value } : it))
+  }
+
+  const MAX_SIZE = 20 * 1024 * 1024 // 20MB
+  const handleUpload = async (id: number, files: FileList | null) => {
+    if (!files || !files.length) return
+    const file = files[0]
+    if (file.size > MAX_SIZE) {
+      toast.error(`图片超过 20MB（${(file.size / 1024 / 1024).toFixed(1)}MB），请压缩后再上传`)
+      return
+    }
+    setUploadingId(id)
+    try {
+      const res = await api.admin.uploadImage(file)
+      const url = res.urls?.[0] || res.url
+      setField(id, 'image_url', url)
+      toast.success('图片已上传，别忘了点「保存」')
+    } catch (err: any) {
+      toast.error('上传失败: ' + (err.message || ''))
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
+  const handleSave = async (item: any) => {
+    setSavingId(item.id)
+    try {
+      await api.admin.updateQrCode(item.id, {
+        label: item.label || '',
+        image_url: item.image_url || '',
+        description: item.description || '',
+      })
+      toast.success('已保存，前台弹窗将实时显示该二维码')
+    } catch (err: any) {
+      toast.error('保存失败: ' + (err.message || ''))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  if (loading) return <div className="text-gray-400">加载中...</div>
+
+  return (
+    <div>
+      <ToastView msgs={toast.msgs} />
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">二维码管理</h2>
+      </div>
+      <div className="text-xs text-gray-400 mb-4">
+        上传微信/抖音/拼多多二维码照片，前台悬浮客服弹窗与联系区将实时显示。支持 JPG / PNG / WebP / GIF，单张不超过 20MB。上传后请点击「保存」生效。
+      </div>
+      <div className="grid gap-5 md:grid-cols-3">
+        {items.map(item => (
+          <div key={item.id} className="bg-white rounded-xl p-5 shadow-sm space-y-3">
+            <h3 className="font-semibold text-gray-700 text-sm">
+              {QR_TYPE_LABELS[item.type] || item.label || item.type}
+            </h3>
+            <div className="flex justify-center">
+              <div className="w-40 h-40 rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                {item.image_url
+                  ? <img src={item.image_url} alt={item.label} className="w-full h-full object-contain" />
+                  : <span className="text-xs text-gray-400 text-center px-2">未上传<br />（前台显示占位图）</span>}
+              </div>
+            </div>
+            <label className="block cursor-pointer text-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-500 hover:border-[#0F6637] hover:text-[#0F6637] transition-colors">
+              {uploadingId === item.id ? '上传中...' : (item.image_url ? '点击更换二维码' : '点击上传二维码')}
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+                onChange={e => handleUpload(item.id, e.target.files)} disabled={uploadingId === item.id} />
+            </label>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">名称</label>
+              <input value={item.label || ''} onChange={e => setField(item.id, 'label', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">说明</label>
+              <input value={item.description || ''} onChange={e => setField(item.id, 'description', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0F6637]" />
+            </div>
+            <input value={item.image_url || ''} onChange={e => setField(item.id, 'image_url', e.target.value)}
+              placeholder="或手动输入图片路径" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#0F6637]" />
+            <button onClick={() => handleSave(item)} disabled={savingId === item.id || uploadingId === item.id}
+              className="w-full bg-[#0F6637] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#1a7a42] disabled:opacity-50">
+              {savingId === item.id ? '保存中...' : '保存'}
+            </button>
           </div>
         ))}
       </div>

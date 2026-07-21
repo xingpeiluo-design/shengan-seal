@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useSettings } from '../lib/settings'
+import { api } from '../api'
 
 interface OnlineChannelProps {
   onSampleClick: () => void
@@ -25,6 +27,18 @@ const channelComplement = [
 
 export default function OnlineChannel({ onSampleClick }: OnlineChannelProps) {
   const settings = useSettings()
+  const [pddQr, setPddQr] = useState('')
+  useEffect(() => {
+    let alive = true
+    api.qrCodes.list()
+      .then((list: any[]) => {
+        if (!alive) return
+        const hit = Array.isArray(list) ? list.find((q: any) => q.type === 'pdd') : null
+        if (hit && hit.image_url) setPddQr(hit.image_url)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
   return (
     <section id="channel" className="py-16 bg-[#0a3d1f]">
       <div className="max-w-7xl mx-auto px-6">
@@ -89,6 +103,9 @@ export default function OnlineChannel({ onSampleClick }: OnlineChannelProps) {
             {/* 拼多多二维码模拟 */}
             <div className="flex-shrink-0 bg-white rounded-xl p-4 text-center shadow-xl">
               <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-2 relative overflow-hidden">
+                {pddQr ? (
+                  <img src={pddQr} alt="拼多多店铺二维码" className="w-full h-full object-contain" />
+                ) : (
                 <svg viewBox="0 0 120 120" className="w-full h-full">
                   {/* 二维码模拟 */}
                   <rect width="120" height="120" fill="white"/>
@@ -119,6 +136,7 @@ export default function OnlineChannel({ onSampleClick }: OnlineChannelProps) {
                     />
                   ))}
                 </svg>
+                )}
               </div>
               <div className="text-xs text-gray-600 font-semibold">扫码进店</div>
               <div className="text-xs text-gray-400 mt-0.5">拼多多工厂直营店</div>
