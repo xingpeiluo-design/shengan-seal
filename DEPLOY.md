@@ -1,6 +1,6 @@
 # 盛安密封官网 · 部署文档
 
-> 交付版本：2026-07-29（对应 git 提交 7909459）
+> 交付版本：2026-07-29（对应 git 提交 77c3e30，含客户真实数据 + 后台二维码管理功能）
 > 技术栈：React 18 + Vite（前端） / Flask + Gunicorn（后端） / SQLite（数据库，零配置） / Nginx（网关）
 > **数据库是 SQLite 文件，不需要安装 MySQL，也不需要建库建表** —— 首次启动自动初始化。
 
@@ -40,7 +40,7 @@ cd /var/www/shengan-seal
 sudo bash deploy.sh
 ```
 
-脚本自动完成：安装系统依赖 → 创建 Python venv 并装依赖 → **初始化 SQLite 数据库**（14 款产品 + 设置 + 资讯种子数据）→ npm install + 前端构建 → 配置 systemd 后端服务（gunicorn，127.0.0.1:5000）→ 配置 nginx（默认监听 **8082** 端口）→ 开防火墙端口。
+脚本自动完成：安装系统依赖 → 创建 Python venv 并装依赖 → **处理数据库**（交付包已含 `shengan.db` 真实数据，脚本检测到即复用、不重置；仅当数据库缺失时才初始化 14 款种子）→ npm install + 前端构建 → 配置 systemd 后端服务（gunicorn，127.0.0.1:5000）→ 配置 nginx（默认监听 **8082** 端口）→ 开防火墙端口。
 
 完成后访问 `http://服务器IP:8082/` 应能看到网站。
 
@@ -87,10 +87,10 @@ certbot --nginx -d 你的域名 -d www.你的域名
 |------|------|
 | `backend/app.py` | Flask 后端（API + 后台登录 + sitemap/robots） |
 | `backend/init_db.py` | 数据库种子脚本（幂等：已有数据不会重建/清空） |
-| `backend/shengan.db` | SQLite 数据库（**部署后自动生成**，升级代码时务必保留） |
+| `backend/shengan.db` | SQLite 数据库（**交付包已含客户真实数据**，脚本检测到即复用、不重置；升级代码时务必保留） |
 | `backend/.secret_key` | 首次启动自动生成的密钥文件（务必保留，权限 600） |
 | `dist/` | 前端构建产物（deploy.sh 自动生成） |
-| `images/` | 产品图片（约 10MB，已含全部素材） |
+| `images/` | 产品图片（约 15MB，已含全部素材） |
 | `.env.production` | 前端构建变量，默认 `VITE_BASE_PATH=/`（独立域名部署**不要改**） |
 | `deploy.sh` | 一键部署脚本（可重复执行，数据库已存在时自动跳过初始化） |
 
